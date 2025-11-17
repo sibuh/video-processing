@@ -1,0 +1,15 @@
+database:
+  host: sema_postgres
+  port: 5432
+  name: sema
+  user: sema
+  password: sema
+testdb:
+  name: sema_test
+  host: localhost
+  port: 5432
+  user: sema
+  password: sema
+token:
+  duration: 1h
+  key: qwertyuiopasdfghjklzxcvbnm123456

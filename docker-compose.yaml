@@ -1,0 +1,33 @@
+services:
+    postgres:
+        image: postgres:17-alpine
+        container_name: sema_postgres
+        environment:
+            - POSTGRES_USER=sema
+            - POSTGRES_PASSWORD=sema
+            - POSTGRES_DB=sema
+        ports:
+            - "5432:5432"
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U sema -d sema || exit 1"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 30s
+    app:
+        build: .  # Tells Compose to build the Dockerfile in the current directory
+        container_name: go-app
+        ports:
+            # Maps port 8080 on the EC2 host to port 8080 in the container
+            - "8888:8888"
+        depends_on:
+            postgres:
+                condition: service_healthy
+                required: true
+        
+        
+
+volumes:
+    postgres_data:
