@@ -1,8 +1,8 @@
 package initiator
 
 import (
-	"backend/models"
 	"fmt"
+	"video-processing/models"
 
 	"github.com/spf13/viper"
 )

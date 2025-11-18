@@ -1,16 +1,16 @@
 package services_test
 
 import (
-	"backend/database/db"
-	"backend/initiator"
-	"backend/models"
-	"backend/services"
 	"context"
 	"fmt"
 	"log"
 	"testing"
+	"video-processing/database/db"
+	"video-processing/initiator"
+	"video-processing/models"
+	"video-processing/services"
 
-	"backend/utils"
+	"video-processing/utils"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"

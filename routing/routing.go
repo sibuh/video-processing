@@ -1,8 +1,8 @@
 package routing
 
 import (
-	"backend/handlers"
 	"net/http"
+	"video-processing/handlers"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -10,8 +10,9 @@ import (
 )
 
 type Handlers struct {
-	UserHandler handlers.User
-	Middlewares handlers.Middleware
+	UserHandler  handlers.User
+	VideoHandler handlers.VideoProcessor
+	Middlewares  handlers.Middleware
 }
 
 func RegisterRoutes(engine *gin.Engine, handlers Handlers) {
@@ -55,6 +56,12 @@ func RegisterRoutes(engine *gin.Engine, handlers Handlers) {
 			method:      http.MethodPatch,
 			path:        "/user",
 			handler:     handlers.UserHandler.UpdateUser,
+			middlewares: []gin.HandlerFunc{handlers.Middlewares.Authenticate()},
+		},
+		{
+			method:      http.MethodPost,
+			path:        "/upload",
+			handler:     handlers.VideoHandler.Upload,
 			middlewares: []gin.HandlerFunc{handlers.Middlewares.Authenticate()},
 		},
 	}

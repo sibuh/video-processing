@@ -1,12 +1,12 @@
 package services
 
 import (
-	"backend/database/db"
-	"backend/models"
-	"backend/utils"
 	"context"
 	"fmt"
 	"time"
+	"video-processing/database/db"
+	"video-processing/models"
+	"video-processing/utils"
 
 	"github.com/google/uuid"
 )

@@ -21,4 +21,18 @@ type Config struct {
 		Duration time.Duration `mapstructure:"duration"`
 		Key      string        `mapstructure:"key"`
 	} `mapstructure:"token"`
+	Minio struct {
+		Endpoint  string `mapstructure:"endpoint"`
+		AccessKey string `mapstructure:"access_key"`
+		SecretKey string `mapstructure:"secret_key"`
+	} `mapstructure:"minio"`
+	Redis struct {
+		Host     string `mapstructure:"host"`
+		Port     string `mapstructure:"port"`
+		Password string `mapstructure:"password"`
+		DB       int    `mapstructure:"db"`
+	} `mapstructure:"redis"`
+	Timeout struct {
+		Duration time.Duration `mapstructure:"duration"`
+	} `mapstructure:"timeout"`
 }

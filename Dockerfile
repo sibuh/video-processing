@@ -16,7 +16,7 @@ COPY . .
 
 # Build the application as a static binary
 # This is crucial for a minimal 'scratch' or 'alpine' final image
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o my-app .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o app .
 
 # ---- Final Stage ----
 # Use a minimal base image
@@ -25,12 +25,12 @@ FROM alpine:latest
 WORKDIR /app
 
 # Copy the compiled binary and config files from the builder stage
-COPY --from=builder /app/my-app .
+COPY --from=builder /app/app .
 COPY --from=builder /app/config ./config
 COPY --from=builder /app/database/schema ./database/schema
 
-# Expose the port your Go app listens on (e.g., 8080)
+# Expose the port your Go app listens on (e.g., 8888)
 EXPOSE 8888
 
 # The command to run your application
-CMD ["./my-app"]
+CMD ["./app"]
