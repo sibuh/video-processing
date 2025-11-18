@@ -1,8 +1,8 @@
 package services_test
 
 import (
-	"backend/initiator"
-	"backend/models"
+	"video-processing/initiator"
+	"video-processing/models"
 )
 
 // loadConfigForTest tries common relative locations so `go test ./...` works from repo root or subpackages.

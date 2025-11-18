@@ -10,15 +10,31 @@ services:
             - "5432:5432"
         volumes:
             - postgres_data:/var/lib/postgresql/data
+        networks:
+            - video-processing-network
         healthcheck:
             test: ["CMD-SHELL", "pg_isready -U sema -d sema || exit 1"]
             interval: 10s
             timeout: 5s
             retries: 5
             start_period: 30s
+    minio:
+        image: minio/minio:latest
+        container_name: minio
+        environment:
+            - MINIO_ROOT_USER=minioadmin
+            - MINIO_ROOT_PASSWORD=minioadmin
+        command: server /data --console-address ":9001"
+        ports:
+            - "9000:9000"
+            - "9001:9001"
+        volumes:
+            - minio_data:/data
+        networks:
+            - video-processing-network
     app:
         build: .  # Tells Compose to build the Dockerfile in the current directory
-        container_name: go-app
+        container_name: app        
         ports:
             # Maps port 8080 on the EC2 host to port 8080 in the container
             - "8888:8888"
@@ -26,8 +42,15 @@ services:
             postgres:
                 condition: service_healthy
                 required: true
-        
+            minio:
+                condition: service_healthy
+                required: true
+        networks:
+            - video-processing-network
         
 
 volumes:
     postgres_data:
+    minio_data:
+networks:
+    video-processing-network:

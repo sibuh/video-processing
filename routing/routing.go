@@ -1,8 +1,8 @@
 package routing
 
 import (
-	"backend/handlers"
 	"net/http"
+	"video-processing/handlers"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"

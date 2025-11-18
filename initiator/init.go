@@ -1,15 +1,15 @@
 package initiator
 
 import (
-	"backend/database/db"
-	"backend/handlers"
-	"backend/routing"
-	"backend/services"
-	"backend/utils"
 	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"video-processing/database/db"
+	"video-processing/handlers"
+	"video-processing/routing"
+	"video-processing/services"
+	"video-processing/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/o1egl/paseto"

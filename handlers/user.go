@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"backend/models"
-	"backend/services"
+	"video-processing/models"
+	"video-processing/services"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

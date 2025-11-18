@@ -1,13 +1,13 @@
 package main
 
 import (
-	_ "backend/docs"
-	"backend/initiator"
+	_ "video-processing/docs"
+	"video-processing/initiator"
 )
 
-// @title           security management app
+// @title           video processing app
 // @version         1.0
-// @description     API for security management service.
+// @description     Web app built with golang using gin framework for video processing service.
 // @termsOfService  http://example.com/terms/
 
 // @contact.name   API Support
@@ -17,7 +17,7 @@ import (
 // @license.name
 // @license.url
 
-// @host      sema.com
+// @host      localhost:8080
 // @BasePath  /v1
 
 func main() {
