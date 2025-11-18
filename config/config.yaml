@@ -6,10 +6,20 @@ database:
   password: sema
 testdb:
   name: sema_test
-  host: localhost
+  host: sema_postgres
   port: 5432
   user: sema
   password: sema
 token:
   duration: 1h
   key: qwertyuiopasdfghjklzxcvbnm123456
+minio:
+  endpoint: minio:9000
+  access_key: minioadmin
+  secret_key: minioadmin
+redis:
+  host: redis
+  port: 6379
+  password: ""
+timeout:
+  duration: 10s

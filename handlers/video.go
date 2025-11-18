@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"video-processing/services"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type VideoProcessor interface {
@@ -15,38 +18,36 @@ type VideoProcessor interface {
 
 type videoHandler struct {
 	logger   *slog.Logger
+	timeout  time.Duration
 	services services.VideoProcessor
 }
 
-func (vh videoHandler) Upload(ctx *gin.Context) {
-	ctx.Request.ParseMultipartForm(100 << 20) // 100 MB
-	file, _, err := ctx.Request.FormFile("video")
-	if err != nil {
-		ctx.Error(err)
+func NewVideoHandler(logger *slog.Logger, timeout time.Duration, services services.VideoProcessor) VideoProcessor {
+	return &videoHandler{
+		logger:   logger,
+		timeout:  timeout,
+		services: services,
+	}
+}
+
+func (vh videoHandler) Upload(c *gin.Context) {
+	// set timeout for request
+	ctx, cancel := context.WithTimeout(c.Request.Context(), vh.timeout)
+	defer cancel()
+	// get user id from context
+	uid, ok := c.Value("user_id").(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	defer file.Close()
 
-	// // Save locally
-	// tempDir := "./uploads"
-	// os.MkdirAll(tempDir, 0755)
-	// fileID := uuid.New().String()
-	// localPath := filepath.Join(tempDir, fileID+filepath.Ext(header.Filename))
-	// outFile, _ := os.Create(localPath)
-	// defer outFile.Close()
-	// _, _ = file.Seek(0, 0)
-	// _, _ = outFile.ReadFrom(file)
+	c.Request.ParseMultipartForm(100 << 20) // 100 MB
 
-	// // Enqueue job
-	// job := queue.VideoJob{
-	// 	ID:        fileID,
-	// 	FilePath:  localPath,
-	// 	OutputDir: "./processed",
-	// }
-	// err = videoQueue.Enqueue(job)
-	// if err != nil {
-	// 	ctx.Error(err)
-	// 	return
-	// }
-	ctx.JSON(http.StatusOK, gin.H{"message": "Video uploaded successfully"})
+	err := vh.services.Upload(ctx, uid.String(), c.Request.MultipartForm.File)
+	if err != nil {
+		vh.logger.Error("failed to upload video", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload video"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Video uploaded successfully"})
 }

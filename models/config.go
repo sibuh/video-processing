@@ -32,4 +32,7 @@ type Config struct {
 		Password string `mapstructure:"password"`
 		DB       int    `mapstructure:"db"`
 	} `mapstructure:"redis"`
+	Timeout struct {
+		Duration time.Duration `mapstructure:"duration"`
+	} `mapstructure:"timeout"`
 }

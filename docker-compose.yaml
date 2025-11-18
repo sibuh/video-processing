@@ -28,21 +28,43 @@ services:
         ports:
             - "9000:9000"
             - "9001:9001"
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
         volumes:
             - minio_data:/data
+        networks:
+            - video-processing-network
+    redis:
+        image: redis:alpine
+        container_name: redis
+        ports:
+            - "6379:6379"
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 30s
         networks:
             - video-processing-network
     app:
         build: .  # Tells Compose to build the Dockerfile in the current directory
         container_name: app        
         ports:
-            # Maps port 8080 on the EC2 host to port 8080 in the container
+            # Maps port 8888 on the host to port 8888 in the container
             - "8888:8888"
         depends_on:
             postgres:
                 condition: service_healthy
                 required: true
             minio:
+                condition: service_healthy
+                required: true
+            redis:
                 condition: service_healthy
                 required: true
         networks:

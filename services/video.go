@@ -4,68 +4,83 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
-	"os"
+	"mime/multipart"
 	"os/exec"
 
 	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/redis/go-redis/v9"
 )
 
 type VideoProcessor interface {
-	UploadFile(ctx context.Context, objectName, filePath, contentType string) error
-	GetFileURL(objectName string) string
+	CreateBucket(ctx context.Context, bucketName string) error
+	ListBuckets(ctx context.Context) ([]minio.BucketInfo, error)
+	Upload(ctx context.Context, userID string, f map[string][]*multipart.FileHeader) error
+	GetFileURL(bucketName, objectName string) string
 }
 
 type videoProcessor struct {
-	BucketName  string
 	logger      *slog.Logger
 	minioClient *minio.Client
 }
 
-func NewVideoProcessor(endpoint, accessKey, secretKey, bucket string) VideoProcessor {
-	client, err := minio.New(endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
-		Secure: false, // set true if using HTTPS
-	})
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	// Ensure bucket exists
-	ctx := context.Background()
-	exists, errBucket := client.BucketExists(ctx, bucket)
-	if errBucket != nil {
-		log.Fatalln(errBucket)
-	}
-	if !exists {
-		client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{})
-	}
-
+func NewVideoProcessor(logger *slog.Logger, minioClient *minio.Client) VideoProcessor {
 	return &videoProcessor{
-		minioClient: client,
-		BucketName:  bucket,
-		logger:      slog.New(slog.NewTextHandler(os.Stdout, nil)),
+		logger:      logger,
+		minioClient: minioClient,
 	}
 }
 
-func (vp *videoProcessor) UploadFile(ctx context.Context, objectName, filePath, contentType string) error {
-	_, err := vp.minioClient.FPutObject(ctx, vp.BucketName, objectName, filePath, minio.PutObjectOptions{
-		ContentType: contentType,
-	})
-	if err != nil {
-		vp.logger.Error("UploadFile error", "error", err)
-		return err
+func (vp *videoProcessor) CreateBucket(ctx context.Context, bucketName string) error {
+	return vp.minioClient.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{})
+}
+func (vp *videoProcessor) ListBuckets(ctx context.Context) ([]minio.BucketInfo, error) {
+	return vp.minioClient.ListBuckets(ctx)
+}
+func (vp *videoProcessor) Upload(ctx context.Context, userID string, f map[string][]*multipart.FileHeader) error {
+	for _, fileHeaders := range f {
+		for _, fileHeader := range fileHeaders {
+			file, err := fileHeader.Open()
+			if err != nil {
+				vp.logger.Error("Upload error", "error", err)
+				return err
+			}
+			defer file.Close()
+
+			buckets, err := vp.ListBuckets(ctx)
+			if err != nil {
+				vp.logger.Error("Upload error", "error", err)
+				return err
+			}
+			bucketExist := false
+			for _, bucket := range buckets {
+				if bucket.Name == userID {
+					bucketExist = true
+				}
+			}
+			if !bucketExist {
+				err := vp.CreateBucket(ctx, userID)
+				if err != nil {
+					vp.logger.Error("Failed to create bucket", "error", err)
+					return err
+				}
+			}
+			_, err = vp.minioClient.PutObject(ctx, userID, fileHeader.Filename, file, fileHeader.Size, minio.PutObjectOptions{
+				ContentType: fileHeader.Header.Get("Content-Type"),
+			})
+			if err != nil {
+				vp.logger.Error("Upload error", "error", err)
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-func (vp *videoProcessor) GetFileURL(objectName string) string {
+func (vp *videoProcessor) GetFileURL(bucketName, objectName string) string {
 	// presigned URL, expires in 1 hour
 	ctx := context.Background()
-	url, err := vp.minioClient.PresignedGetObject(ctx, vp.BucketName, objectName, 3600, nil)
+	url, err := vp.minioClient.PresignedGetObject(ctx, bucketName, objectName, 3600, nil)
 	if err != nil {
 		vp.logger.Error("GetFileURL error", "error", err)
 		return ""

@@ -17,14 +17,14 @@ import (
 
 func Init() {
 	logger := NewLogger()
-	v, err := LoadConfig("./config")
+	config, err := LoadConfig("./config")
 	if err != nil {
 		log.Fatal(err)
 	}
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		v.Database.User, v.Database.Password,
-		v.Database.Host, v.Database.Port,
-		v.Database.Name)
+		config.Database.User, config.Database.Password,
+		config.Database.Host, config.Database.Port,
+		config.Database.Name)
 	// create connection pool
 	pool, err := NewPool(
 		context.Background(),
@@ -34,7 +34,7 @@ func Init() {
 	}
 	defer pool.Close()
 	// run up migration
-	if err := RunMigrations("file://./database/schema", v.Database.Name, dsn); err != nil {
+	if err := RunMigrations("file://./database/schema", config.Database.Name, dsn); err != nil {
 		log.Fatal(err)
 	}
 	logger.Info("migrations run successfully")
@@ -46,26 +46,30 @@ func Init() {
 	}
 	logger.Info("enforcer created successfully")
 
-	tm := utils.NewTokenManager(v.Token.Key,
-		v.Token.Duration, *paseto.NewV2())
+	tm := utils.NewTokenManager(config.Token.Key,
+		config.Token.Duration, *paseto.NewV2())
 
 	db := db.New(pool)
-
+	// init minio client
+	minioClient := InitMinio(logger, config)
 	// services
 
 	userService := services.NewUser(*db, tm)
+	videoService := services.NewVideoProcessor(logger, minioClient)
 
 	// http handlers
 	middlewares := handlers.NewMiddleware(tm, enforcer.Enforcer)
 	userHandler := handlers.NewUser(userService)
+	videoHandler := handlers.NewVideoHandler(logger, config.Timeout.Duration, videoService)
 
 	engine := gin.New()
 	engine.Use(middlewares.ErrorMiddleware())
 	engine.Use(middlewares.Cors())
 	//register http routes
 	routing.RegisterRoutes(engine, routing.Handlers{
-		UserHandler: userHandler,
-		Middlewares: middlewares,
+		UserHandler:  userHandler,
+		VideoHandler: videoHandler,
+		Middlewares:  middlewares,
 	})
 
 	// run server

@@ -1,12 +1,12 @@
 package handlers
 
 import (
-	"backend/models"
-	"backend/utils"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"video-processing/models"
+	"video-processing/utils"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
