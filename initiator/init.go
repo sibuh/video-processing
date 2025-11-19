@@ -55,7 +55,7 @@ func Init() {
 	// services
 
 	userService := services.NewUser(*db, tm)
-	videoService := services.NewVideoProcessor(logger, minioClient)
+	videoService := services.NewVideoProcessor(logger, minioClient, db)
 
 	// http handlers
 	middlewares := handlers.NewMiddleware(tm, enforcer.Enforcer)
