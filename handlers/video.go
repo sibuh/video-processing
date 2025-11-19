@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"video-processing/models"
 	"video-processing/services"
 
 	"github.com/gin-gonic/gin"
@@ -30,6 +31,18 @@ func NewVideoHandler(logger *slog.Logger, timeout time.Duration, services servic
 	}
 }
 
+// @Summary Upload video
+// @Tags video
+// @Accept multipart/form-data
+// @Produce json
+// @Param videos formData file true "Video file"
+// @Param title formData string true "Video title"
+// @Param description formData string true "Video description"
+// @Success 200 {object} string "Video uploaded successfully"
+// @Failure 400 {object} string "Bad request"
+// @Failure 500 {object} string "Internal server error"
+// @Router /v1/upload [post]
+// @Security BearerAuth
 func (vh videoHandler) Upload(c *gin.Context) {
 	// set timeout for request
 	ctx, cancel := context.WithTimeout(c.Request.Context(), vh.timeout)
@@ -40,10 +53,15 @@ func (vh videoHandler) Upload(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
+	var req models.UploadVideoRequest
+	if err := c.ShouldBind(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.Request.ParseMultipartForm(100 << 20) // 100 MB
 
-	err := vh.services.Upload(ctx, uid.String(), c.Request.MultipartForm.File)
+	err := vh.services.Upload(ctx, uid, req)
 	if err != nil {
 		vh.logger.Error("failed to upload video", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload video"})

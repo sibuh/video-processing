@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"mime/multipart"
 	"os/exec"
+	"video-processing/database/db"
+	"video-processing/models"
 
+	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 	"github.com/redis/go-redis/v9"
 )
@@ -15,19 +17,23 @@ import (
 type VideoProcessor interface {
 	CreateBucket(ctx context.Context, bucketName string) error
 	ListBuckets(ctx context.Context) ([]minio.BucketInfo, error)
-	Upload(ctx context.Context, userID string, f map[string][]*multipart.FileHeader) error
+	Upload(ctx context.Context, userID uuid.UUID, req models.UploadVideoRequest) error
 	GetFileURL(bucketName, objectName string) string
 }
 
 type videoProcessor struct {
 	logger      *slog.Logger
 	minioClient *minio.Client
+	db          *db.Queries
+	streamer    Streamer
 }
 
-func NewVideoProcessor(logger *slog.Logger, minioClient *minio.Client) VideoProcessor {
+func NewVideoProcessor(logger *slog.Logger, minioClient *minio.Client, db *db.Queries, streamer Streamer) VideoProcessor {
 	return &videoProcessor{
 		logger:      logger,
 		minioClient: minioClient,
+		db:          db,
+		streamer:    streamer,
 	}
 }
 
@@ -37,41 +43,65 @@ func (vp *videoProcessor) CreateBucket(ctx context.Context, bucketName string) e
 func (vp *videoProcessor) ListBuckets(ctx context.Context) ([]minio.BucketInfo, error) {
 	return vp.minioClient.ListBuckets(ctx)
 }
-func (vp *videoProcessor) Upload(ctx context.Context, userID string, f map[string][]*multipart.FileHeader) error {
-	for _, fileHeaders := range f {
-		for _, fileHeader := range fileHeaders {
-			file, err := fileHeader.Open()
-			if err != nil {
-				vp.logger.Error("Upload error", "error", err)
-				return err
-			}
-			defer file.Close()
+func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req models.UploadVideoRequest) error {
+	if err := req.Validate(); err != nil {
+		vp.logger.Error("Invalid Input", "error", err)
+		return err
+	}
+	for _, fileHeader := range req.Videos {
+		file, err := fileHeader.Open()
+		if err != nil {
+			vp.logger.Error("Upload error", "error", err)
+			return err
+		}
+		defer file.Close()
 
-			buckets, err := vp.ListBuckets(ctx)
+		buckets, err := vp.ListBuckets(ctx)
+		if err != nil {
+			vp.logger.Error("Upload error", "error", err)
+			return err
+		}
+		bucketExist := false
+		for _, bucket := range buckets {
+			if bucket.Name == userID.String() {
+				bucketExist = true
+			}
+		}
+		if !bucketExist {
+			err := vp.CreateBucket(ctx, userID.String())
 			if err != nil {
-				vp.logger.Error("Upload error", "error", err)
+				vp.logger.Error("Failed to create bucket", "error", err)
 				return err
 			}
-			bucketExist := false
-			for _, bucket := range buckets {
-				if bucket.Name == userID {
-					bucketExist = true
-				}
-			}
-			if !bucketExist {
-				err := vp.CreateBucket(ctx, userID)
-				if err != nil {
-					vp.logger.Error("Failed to create bucket", "error", err)
-					return err
-				}
-			}
-			_, err = vp.minioClient.PutObject(ctx, userID, fileHeader.Filename, file, fileHeader.Size, minio.PutObjectOptions{
-				ContentType: fileHeader.Header.Get("Content-Type"),
-			})
-			if err != nil {
-				vp.logger.Error("Upload error", "error", err)
-				return err
-			}
+		}
+		_, err = vp.minioClient.PutObject(ctx, userID.String(), fileHeader.Filename, file, fileHeader.Size, minio.PutObjectOptions{
+			ContentType: fileHeader.Header.Get("Content-Type"),
+		})
+		if err != nil {
+			vp.logger.Error("Upload error", "error", err)
+			return err
+		}
+		_, err = vp.db.CreateVideo(ctx, db.CreateVideoParams{
+			UserID:        userID,
+			Filename:      fileHeader.Filename,
+			Title:         req.Title,
+			Description:   req.Description,
+			Bucket:        userID.String(),
+			Key:           fileHeader.Filename,
+			FileSizeBytes: fileHeader.Size,
+			ContentType:   fileHeader.Header.Get("Content-Type"),
+		})
+		if err != nil {
+			vp.logger.Error("Upload error", "error", err)
+			return err
+		}
+		err = vp.streamer.Stream(ctx, map[string]interface{}{
+			"bucket": userID.String(),
+			"key":    fileHeader.Filename,
+		})
+		if err != nil {
+			vp.logger.Error("Upload error", "error", err)
+			return err
 		}
 	}
 	return nil

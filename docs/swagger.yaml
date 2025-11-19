@@ -1,45 +1,10 @@
 basePath: /v1
 definitions:
-  models.Company:
-    properties:
-      created_at:
-        type: string
-      id:
-        type: string
-      latitude:
-        type: number
-      location_name:
-        type: string
-      longitude:
-        type: number
-      name:
-        type: string
-      updated_at:
-        type: string
-    type: object
-  models.CreateCompanyRequest:
-    properties:
-      latitude:
-        type: number
-      longitude:
-        type: number
-      name:
-        type: string
-    type: object
   models.LoginRequest:
     properties:
       email:
         type: string
       password:
-        type: string
-    type: object
-  models.UpdateCompanyRequest:
-    properties:
-      latitude:
-        type: number
-      longitude:
-        type: number
-      name:
         type: string
     type: object
   models.UpdateUserRequest:
@@ -101,147 +66,59 @@ definitions:
       username:
         type: string
     type: object
-host: sema.com
+host: localhost:8080
 info:
   contact:
     email: support@example.com
     name: API Support
     url: http://www.example.com/support
-  description: API for security management service.
+  description: Web app built with golang using gin framework for video processing
+    service.
   license: {}
   termsOfService: http://example.com/terms/
-  title: security management app
+  title: video processing app
   version: "1.0"
 paths:
-  /v1/companies:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/models.Company'
-            type: array
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - BearerAuth: []
-      summary: List companies
-      tags:
-      - companies
+  /v1/upload:
     post:
       consumes:
-      - application/json
+      - multipart/form-data
       parameters:
-      - description: Company payload
-        in: body
-        name: company
+      - description: Video file
+        in: formData
+        name: videos
         required: true
-        schema:
-          $ref: '#/definitions/models.CreateCompanyRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/models.Company'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Create a new company
-      tags:
-      - companies
-  /v1/companies/{id}:
-    delete:
-      parameters:
-      - description: Company ID
-        in: path
-        name: id
+        type: file
+      - description: Video title
+        in: formData
+        name: title
+        required: true
+        type: string
+      - description: Video description
+        in: formData
+        name: description
         required: true
         type: string
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Video uploaded successfully
           schema:
-            $ref: '#/definitions/models.Company'
+            type: string
         "400":
-          description: Bad Request
+          description: Bad request
           schema:
-            additionalProperties: true
-            type: object
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
       security:
       - BearerAuth: []
-      summary: Delete a company
+      summary: Upload video
       tags:
-      - companies
-    get:
-      parameters:
-      - description: Company ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.Company'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Get a company
-      tags:
-      - companies
-    patch:
-      consumes:
-      - application/json
-      parameters:
-      - description: Company ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Company payload
-        in: body
-        name: company
-        required: true
-        schema:
-          $ref: '#/definitions/models.UpdateCompanyRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.Company'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Update a company
-      tags:
-      - companies
+      - video
   /v1/users:
     get:
       consumes:
@@ -270,7 +147,7 @@ paths:
       - BearerAuth: []
       summary: Get a user
       tags:
-      - users
+      - user
     patch:
       consumes:
       - application/json
@@ -298,7 +175,7 @@ paths:
       - BearerAuth: []
       summary: Update a user
       tags:
-      - users
+      - user
     post:
       consumes:
       - application/json
@@ -325,7 +202,7 @@ paths:
             type: object
       summary: Register a new user
       tags:
-      - users
+      - user
   /v1/users/login:
     post:
       consumes:
@@ -352,7 +229,7 @@ paths:
             type: object
       summary: Login a user
       tags:
-      - users
+      - user
   /v1/users/search:
     get:
       consumes:
@@ -381,5 +258,5 @@ paths:
       - BearerAuth: []
       summary: Search for users
       tags:
-      - users
+      - user
 swagger: "2.0"
