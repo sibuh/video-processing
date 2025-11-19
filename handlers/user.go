@@ -31,7 +31,7 @@ func NewUser(us services.UserService) User {
 // RegisterUser registers a new user.
 // @Summary Register a new user
 // @Description Register a new user with the input payload
-// @Tags users
+// @Tags user
 // @Accept  json
 // @Produce  json
 // @Param   user  body    models.UserRegistrationRequest  true  "User payload"
@@ -66,7 +66,7 @@ func (u *user) RegisterUser(ctx *gin.Context) {
 // LoginUser logs in a user.
 // @Summary Login a user
 // @Description Login a user with the input payload
-// @Tags users
+// @Tags user
 // @Accept  json
 // @Produce  json
 // @Param   user  body    models.LoginRequest  true  "User payload"
@@ -100,7 +100,7 @@ func (u *user) LoginUser(ctx *gin.Context) {
 // SearchUsers searches for users.
 // @Summary Search for users
 // @Description Search for users with the input payload
-// @Tags users
+// @Tags user
 // @Accept  json
 // @Produce  json
 // @Param   user  body    models.User  true  "User payload"
@@ -125,7 +125,7 @@ func (u *user) SearchUsers(ctx *gin.Context) {
 // GetUser gets a user.
 // @Summary Get a user
 // @Description Get a user with the input payload
-// @Tags users
+// @Tags user
 // @Accept  json
 // @Produce  json
 // @Param   user  body    models.User  true  "User payload"
@@ -160,7 +160,7 @@ func (u *user) GetUser(ctx *gin.Context) {
 // UpdateUser updates a user.
 // @Summary Update a user
 // @Description Update a user with the input payload
-// @Tags users
+// @Tags user
 // @Accept  json
 // @Produce  json
 // @Param   user  body    models.UpdateUserRequest  true  "User payload"

@@ -11,57 +11,35 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type Branch struct {
-	ID           uuid.UUID          `json:"id"`
-	Name         string             `json:"name"`
-	CompanyID    uuid.UUID          `json:"company_id"`
-	Latitude     pgtype.Float8      `json:"latitude"`
-	Longitude    pgtype.Float8      `json:"longitude"`
-	LocationName pgtype.Text        `json:"location_name"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+type OriginalVideo struct {
+	ID            uuid.UUID `json:"id"`
+	UserID        uuid.UUID `json:"user_id"`
+	Status        string    `json:"status"`
+	Filename      string    `json:"filename"`
+	Title         string    `json:"title"`
+	Description   string    `json:"description"`
+	Bucket        string    `json:"bucket"`
+	Key           string    `json:"key"`
+	FileSizeBytes int64     `json:"file_size_bytes"`
+	ContentType   string    `json:"content_type"`
+	Duration      int32     `json:"duration"`
+	Width         int32     `json:"width"`
+	Height        int32     `json:"height"`
+	Metadata      []byte    `json:"metadata"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
-type Company struct {
-	ID           uuid.UUID          `json:"id"`
-	Name         string             `json:"name"`
-	Latitude     pgtype.Float8      `json:"latitude"`
-	Longitude    pgtype.Float8      `json:"longitude"`
-	LocationName pgtype.Text        `json:"location_name"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-}
-
-type Department struct {
-	ID        uuid.UUID          `json:"id"`
-	Name      string             `json:"name"`
-	CompanyID uuid.UUID          `json:"company_id"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
-}
-
-type Employee struct {
-	ID           uuid.UUID          `json:"id"`
-	UserID       uuid.UUID          `json:"user_id"`
-	Salary       float64            `json:"salary"`
-	Status       string             `json:"status"`
-	CompanyID    uuid.UUID          `json:"company_id"`
-	BranchID     pgtype.UUID        `json:"branch_id"`
-	DepartmentID pgtype.UUID        `json:"department_id"`
-	SiteID       pgtype.UUID        `json:"site_id"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-}
-
-type Site struct {
-	ID           uuid.UUID          `json:"id"`
-	Name         string             `json:"name"`
-	BranchID     uuid.UUID          `json:"branch_id"`
-	Latitude     pgtype.Float8      `json:"latitude"`
-	Longitude    pgtype.Float8      `json:"longitude"`
-	LocationName pgtype.Text        `json:"location_name"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+type ProcessedVideo struct {
+	ID            uuid.UUID `json:"id"`
+	VideoID       uuid.UUID `json:"video_id"`
+	AssetType     string    `json:"asset_type"`
+	Bucket        string    `json:"bucket"`
+	Key           string    `json:"key"`
+	Width         int32     `json:"width"`
+	Height        int32     `json:"height"`
+	FileSizeBytes int64     `json:"file_size_bytes"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type User struct {
