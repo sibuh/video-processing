@@ -24,6 +24,9 @@ FROM alpine:latest
 
 WORKDIR /app
 
+# install ffmpeg
+RUN apk add --no-cache ffmpeg
+
 # Copy the compiled binary and config files from the builder stage
 COPY --from=builder /app/app .
 COPY --from=builder /app/config ./config

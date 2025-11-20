@@ -105,15 +105,18 @@ paths:
         "200":
           description: Video uploaded successfully
           schema:
-            type: string
+            additionalProperties: true
+            type: object
         "400":
           description: Bad request
           schema:
-            type: string
+            additionalProperties: true
+            type: object
         "500":
           description: Internal server error
           schema:
-            type: string
+            additionalProperties: true
+            type: object
       security:
       - BearerAuth: []
       summary: Upload video

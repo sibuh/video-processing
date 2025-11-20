@@ -2,34 +2,32 @@ package services
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
-	"os/exec"
+	"time"
 	"video-processing/database/db"
 	"video-processing/models"
 
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
-	"github.com/redis/go-redis/v9"
 )
 
 type VideoProcessor interface {
 	CreateBucket(ctx context.Context, bucketName string) error
 	ListBuckets(ctx context.Context) ([]minio.BucketInfo, error)
-	Upload(ctx context.Context, userID uuid.UUID, req models.UploadVideoRequest) error
-	GetFileURL(bucketName, objectName string) string
+	Upload(ctx context.Context, userID uuid.UUID, req models.UploadVideoRequest) (string, error)
 }
 
 type videoProcessor struct {
+	urlExpiry   time.Duration
 	logger      *slog.Logger
 	minioClient *minio.Client
 	db          *db.Queries
 	streamer    Streamer
 }
 
-func NewVideoProcessor(logger *slog.Logger, minioClient *minio.Client, db *db.Queries, streamer Streamer) VideoProcessor {
+func NewVideoProcessor(logger *slog.Logger, minioClient *minio.Client, db *db.Queries, streamer Streamer, urlExpiry time.Duration) VideoProcessor {
 	return &videoProcessor{
+		urlExpiry:   urlExpiry,
 		logger:      logger,
 		minioClient: minioClient,
 		db:          db,
@@ -43,23 +41,23 @@ func (vp *videoProcessor) CreateBucket(ctx context.Context, bucketName string) e
 func (vp *videoProcessor) ListBuckets(ctx context.Context) ([]minio.BucketInfo, error) {
 	return vp.minioClient.ListBuckets(ctx)
 }
-func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req models.UploadVideoRequest) error {
+func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req models.UploadVideoRequest) (string, error) {
 	if err := req.Validate(); err != nil {
 		vp.logger.Error("Invalid Input", "error", err)
-		return err
+		return "", err
 	}
 	for _, fileHeader := range req.Videos {
 		file, err := fileHeader.Open()
 		if err != nil {
 			vp.logger.Error("Upload error", "error", err)
-			return err
+			return "", err
 		}
 		defer file.Close()
 
 		buckets, err := vp.ListBuckets(ctx)
 		if err != nil {
 			vp.logger.Error("Upload error", "error", err)
-			return err
+			return "", err
 		}
 		bucketExist := false
 		for _, bucket := range buckets {
@@ -71,7 +69,7 @@ func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req mode
 			err := vp.CreateBucket(ctx, userID.String())
 			if err != nil {
 				vp.logger.Error("Failed to create bucket", "error", err)
-				return err
+				return "", err
 			}
 		}
 		_, err = vp.minioClient.PutObject(ctx, userID.String(), fileHeader.Filename, file, fileHeader.Size, minio.PutObjectOptions{
@@ -79,8 +77,16 @@ func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req mode
 		})
 		if err != nil {
 			vp.logger.Error("Upload error", "error", err)
-			return err
+			return "", err
 		}
+		// generate url
+		url, err := vp.getVideoURL(userID.String(), fileHeader.Filename, vp.urlExpiry)
+		if err != nil {
+			vp.logger.Error("Upload error", "error", err)
+			return "", err
+		}
+		vp.logger.Info("generated url:", "url", url)
+		// save video metadata to database
 		_, err = vp.db.CreateVideo(ctx, db.CreateVideoParams{
 			UserID:        userID,
 			Filename:      fileHeader.Filename,
@@ -90,10 +96,11 @@ func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req mode
 			Key:           fileHeader.Filename,
 			FileSizeBytes: fileHeader.Size,
 			ContentType:   fileHeader.Header.Get("Content-Type"),
+			Url:           url,
 		})
 		if err != nil {
 			vp.logger.Error("Upload error", "error", err)
-			return err
+			return "", err
 		}
 		err = vp.streamer.Stream(ctx, map[string]interface{}{
 			"bucket": userID.String(),
@@ -101,104 +108,19 @@ func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req mode
 		})
 		if err != nil {
 			vp.logger.Error("Upload error", "error", err)
-			return err
+			return "", err
 		}
 	}
-	return nil
+	return "", nil
 }
 
-func (vp *videoProcessor) GetFileURL(bucketName, objectName string) string {
+func (vp *videoProcessor) getVideoURL(bucketName, objectName string, expiry time.Duration) (string, error) {
 	// presigned URL, expires in 1 hour
 	ctx := context.Background()
-	url, err := vp.minioClient.PresignedGetObject(ctx, bucketName, objectName, 3600, nil)
+	url, err := vp.minioClient.PresignedGetObject(ctx, bucketName, objectName, expiry, nil)
 	if err != nil {
-		vp.logger.Error("GetFileURL error", "error", err)
-		return ""
+		vp.logger.Error("GetVideoURL error", "error", err)
+		return "", err
 	}
-	return url.String()
+	return url.String(), nil
 }
-
-func Transcode(inputPath, outputPath string) error {
-	cmd := exec.Command("ffmpeg", "-i", inputPath,
-		"-c:v", "libx264", "-preset", "fast", "-crf", "23",
-		"-c:a", "aac", outputPath)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("ffmpeg error: %s", out)
-	}
-	return nil
-}
-
-func GenerateThumbnail(inputPath, outputPath string, seconds int) error {
-	cmd := exec.Command("ffmpeg", "-i", inputPath, "-ss", fmt.Sprintf("00:00:%02d", seconds),
-		"-vframes", "1", outputPath)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("thumbnail error: %s", out)
-	}
-	return nil
-}
-
-func ConvertToHLS(inputPath, outputDir string) error {
-	cmd := exec.Command("ffmpeg", "-i", inputPath,
-		"-profile:v", "baseline", "-level", "3.0",
-		"-start_number", "0", "-hls_time", "10",
-		"-hls_list_size", "0", "-f", "hls", fmt.Sprintf("%s/index.m3u8", outputDir))
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("HLS error: %s", out)
-	}
-	return nil
-}
-
-type VideoJob struct {
-	ID        string `json:"id"`
-	FilePath  string `json:"file_path"`
-	OutputDir string `json:"output_dir"`
-}
-
-type Queue struct {
-	Client *redis.Client
-	Key    string
-}
-
-func NewQueue(addr string) *Queue {
-	rdb := redis.NewClient(&redis.Options{
-		Addr: addr,
-	})
-	return &Queue{Client: rdb, Key: "video_jobs"}
-}
-
-func (q *Queue) Enqueue(job VideoJob) error {
-	ctx := context.Background()
-	data, _ := json.Marshal(job)
-	return q.Client.LPush(ctx, q.Key, data).Err()
-}
-
-func (q *Queue) Dequeue() (*VideoJob, error) {
-	ctx := context.Background()
-	val, err := q.Client.BRPop(ctx, 0, q.Key).Result()
-	if err != nil {
-		return nil, err
-	}
-	var job VideoJob
-	_ = json.Unmarshal([]byte(val[1]), &job)
-	return &job, nil
-}
-
-// func processJob(job *queue.VideoJob) {
-// 	fmt.Println("Processing job:", job.ID)
-// 	outputFile := fmt.Sprintf("%s/%s.mp4", job.OutputDir, job.ID)
-// 	thumbFile := fmt.Sprintf("%s/%s.jpg", job.OutputDir, job.ID)
-
-// 	os.MkdirAll(job.OutputDir, 0755)
-// 	if err := ffmpeg.Transcode(job.FilePath, outputFile); err != nil {
-// 		log.Println("Transcode error:", err)
-// 		return
-// 	}
-// 	if err := ffmpeg.GenerateThumbnail(outputFile, thumbFile, 5); err != nil {
-// 		log.Println("Thumbnail error:", err)
-// 		return
-// 	}
-// 	log.Println("Job completed:", job.ID)
-// }

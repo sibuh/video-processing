@@ -57,7 +57,7 @@ func Init() {
 	// init streamer
 	streamer := services.NewRedisStreamer("video_stream", logger, redisClient)
 	// init consumer and run it in a separate goroutine
-	consumer := services.NewRedisConsumer("video_stream", "video_group", "video_consumer_1", logger, redisClient)
+	consumer := services.NewRedisConsumer("video_stream", "video_group", "video_consumer_1", logger, redisClient, minioClient)
 	go func() {
 		if err := consumer.Consume(context.Background()); err != nil {
 			logger.Error("❌ Consumer error", "error", err)
@@ -66,7 +66,7 @@ func Init() {
 
 	// services
 	userService := services.NewUser(*db, tm)
-	videoService := services.NewVideoProcessor(logger, minioClient, db, streamer)
+	videoService := services.NewVideoProcessor(logger, minioClient, db, streamer, config.Minio.UrlExpiry)
 
 	// http handlers
 	middlewares := handlers.NewMiddleware(tm, enforcer.Enforcer)

@@ -10,6 +10,7 @@ CREATE TABLE original_videos (
     key VARCHAR(255) NOT NULL,
     file_size_bytes BIGINT NOT NULL,
     content_type VARCHAR(50) NOT NULL,
+    url VARCHAR NOT NULL,
     duration INT NOT NULL DEFAULT 0,
     width INT NOT NULL DEFAULT 0,
     height INT NOT NULL DEFAULT 0,
@@ -30,5 +31,6 @@ CREATE TABLE processed_videos (
     width INT NOT NULL DEFAULT 0,
     height INT NOT NULL DEFAULT 0,
     file_size_bytes BIGINT NOT NULL,
+    url VARCHAR NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
