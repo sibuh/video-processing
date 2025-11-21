@@ -38,9 +38,9 @@ func NewVideoHandler(logger *slog.Logger, timeout time.Duration, services servic
 // @Param videos formData file true "Video file"
 // @Param title formData string true "Video title"
 // @Param description formData string true "Video description"
-// @Success 200 {object} string "Video uploaded successfully"
-// @Failure 400 {object} string "Bad request"
-// @Failure 500 {object} string "Internal server error"
+// @Success 200 {object} map[string]interface{} "Video uploaded successfully"
+// @Failure 400 {object} map[string]interface{} "Bad request"
+// @Failure 500 {object} map[string]interface{} "Internal server error"
 // @Router /v1/upload [post]
 // @Security BearerAuth
 func (vh videoHandler) Upload(c *gin.Context) {
@@ -61,11 +61,18 @@ func (vh videoHandler) Upload(c *gin.Context) {
 
 	c.Request.ParseMultipartForm(100 << 20) // 100 MB
 
-	err := vh.services.Upload(ctx, uid, req)
+	url, err := vh.services.Upload(ctx, uid, req)
 	if err != nil {
 		vh.logger.Error("failed to upload video", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload video"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Video uploaded successfully"})
+	c.JSON(http.StatusOK, gin.H{
+		"Ok": true,
+		"data": map[string]interface{}{
+			"message": "Video uploaded successfully",
+			"url":     url,
+		},
+		"error": nil,
+	})
 }

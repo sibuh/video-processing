@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/minio/minio-go/v7"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -54,15 +56,17 @@ type redisConsumer struct {
 	consumerName string
 	logger       *slog.Logger
 	rc           *redis.Client
+	mc           *minio.Client
 }
 
-func NewRedisConsumer(streamName, groupName, consumerName string, logger *slog.Logger, rc *redis.Client) Consumer {
+func NewRedisConsumer(streamName, groupName, consumerName string, logger *slog.Logger, rc *redis.Client, mc *minio.Client) Consumer {
 	return &redisConsumer{
 		streamName:   streamName,
 		groupName:    groupName,
 		consumerName: consumerName,
 		logger:       logger,
 		rc:           rc,
+		mc:           mc,
 	}
 }
 func (rc *redisConsumer) Consume(ctx context.Context) error {
@@ -102,7 +106,7 @@ func (rc *redisConsumer) Consume(ctx context.Context) error {
 		// Process the batch of entries
 		for _, stream := range entries {
 			for _, message := range stream.Messages {
-				processMessage(message.Values)
+				rc.processMessage(rc.logger, message.Values)
 
 				// 3. Acknowledge the message
 				// This removes it from the "Pending Entries List" (PEL)
@@ -116,9 +120,10 @@ func (rc *redisConsumer) Consume(ctx context.Context) error {
 	}
 }
 
-func processMessage(values map[string]interface{}) {
+func (rc *redisConsumer) processMessage(logger *slog.Logger, values map[string]interface{}) {
 	// Simulate processing logic
 	fmt.Printf("Processing video bucket: %v | Key: %v\n", values["bucket"], values["key"])
-	// Simulating work...
+	// process video
+	Process(context.Background(), logger, values["bucket"].(string), values["key"].(string), "processed/"+uuid.New().String(), rc.mc)
 	time.Sleep(100 * time.Millisecond)
 }

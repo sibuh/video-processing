@@ -22,6 +22,7 @@ type OriginalVideo struct {
 	Key           string    `json:"key"`
 	FileSizeBytes int64     `json:"file_size_bytes"`
 	ContentType   string    `json:"content_type"`
+	Url           string    `json:"url"`
 	Duration      int32     `json:"duration"`
 	Width         int32     `json:"width"`
 	Height        int32     `json:"height"`
@@ -39,6 +40,7 @@ type ProcessedVideo struct {
 	Width         int32     `json:"width"`
 	Height        int32     `json:"height"`
 	FileSizeBytes int64     `json:"file_size_bytes"`
+	Url           string    `json:"url"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
