@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
+	"video-processing/models"
 
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
@@ -39,7 +41,12 @@ func (rs *redisStreamer) Stream(ctx context.Context, values map[string]interface
 	id, err := cmd.Result()
 	if err != nil {
 		rs.logger.Error("Failed to publish event", "error", err)
-		return err
+		return models.Error{
+			Code:    http.StatusInternalServerError,
+			Message: "internal server error",
+			Params:  fmt.Sprintf("values:%v", values),
+			Err:     fmt.Errorf("failed to publish event: %w", err),
+		}
 	}
 
 	rs.logger.Info("Event published successfully with ID", "id", id)
@@ -78,8 +85,12 @@ func (rc *redisConsumer) Consume(ctx context.Context) error {
 	if err != nil {
 		// Ignore error if group already exists
 		if err.Error() != "BUSYGROUP Consumer Group name already exists" {
-			rc.logger.Error("Failed to create group", "error", err)
-			return err
+			return models.Error{
+				Code:    http.StatusInternalServerError,
+				Message: "internal server error",
+				Params:  fmt.Sprintf("streamName:%v, groupName:%v, consumerName:%v", rc.streamName, rc.groupName, rc.consumerName),
+				Err:     fmt.Errorf("failed to create group: %w", err),
+			}
 		}
 	}
 
@@ -99,31 +110,23 @@ func (rc *redisConsumer) Consume(ctx context.Context) error {
 				// Timeout (Block time expired), just loop again
 				continue
 			}
-			rc.logger.Error("Error reading stream", "error", err)
+			rc.logger.Error("Error reading stream", "error", err, "params", fmt.Sprintf("streamName:%v, groupName:%v, consumerName:%v", rc.streamName, rc.groupName, rc.consumerName))
 			continue
 		}
 
 		// Process the batch of entries
 		for _, stream := range entries {
 			for _, message := range stream.Messages {
-				rc.processMessage(rc.logger, message.Values)
+				rc.ProcessVideo(context.Background(), message.Values["bucket"].(string), message.Values["key"].(string), "processed/"+uuid.New().String())
 
 				// 3. Acknowledge the message
 				// This removes it from the "Pending Entries List" (PEL)
 				// ensuring it won't be redelivered.
 				err := rc.rc.XAck(ctx, rc.streamName, rc.groupName, message.ID).Err()
 				if err != nil {
-					rc.logger.Error("Failed to ack message", "error", err)
+					rc.logger.Error("Failed to ack message", "error", err, "params", fmt.Sprintf("streamName:%v, groupName:%v, messageID:%v", rc.streamName, rc.groupName, message.ID))
 				}
 			}
 		}
 	}
-}
-
-func (rc *redisConsumer) processMessage(logger *slog.Logger, values map[string]interface{}) {
-	// Simulate processing logic
-	fmt.Printf("Processing video bucket: %v | Key: %v\n", values["bucket"], values["key"])
-	// process video
-	Process(context.Background(), logger, values["bucket"].(string), values["key"].(string), "processed/"+uuid.New().String(), rc.mc)
-	time.Sleep(100 * time.Millisecond)
 }

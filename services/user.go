@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 	"video-processing/database/db"
 	"video-processing/models"
@@ -34,12 +35,17 @@ func NewUser(db db.Queries, tm utils.TokenManager) UserService {
 func (u *user) Register(ctx context.Context, arg models.UserRegistrationRequest) (models.User, error) {
 	// validate registration request fields
 	if err := arg.Validate(); err != nil {
-		return models.User{}, models.NewError(err)
+		return models.User{}, models.Error{
+			Code:    http.StatusBadRequest,
+			Message: "invalid input data",
+			Params:  fmt.Sprintf("arg: %v", arg),
+			Err:     err,
+		}
 	}
 	//Hash password before saving
 	hash, err := utils.HashPassword(arg.Password)
 	if err != nil {
-		return models.User{}, models.NewError(err)
+		return models.User{}, err
 	}
 	user, err := u.db.CreateUser(ctx, db.CreateUserParams{
 		FirstName:  arg.FirstName,
@@ -51,7 +57,7 @@ func (u *user) Register(ctx context.Context, arg models.UserRegistrationRequest)
 		Email:      arg.Email,
 	})
 	if err != nil {
-		return models.User{}, models.NewError(err)
+		return models.User{}, models.IndentifyDbError(err).AddParams(fmt.Sprintf("arg: %v", arg))
 	}
 
 	return convertDbUserToModelUser(user), nil
@@ -76,20 +82,30 @@ func convertDbUserToModelUser(user db.User) models.User {
 func (u *user) Login(ctx context.Context, arg models.LoginRequest) (models.LoginResponse, error) {
 	if err := arg.Validate(); err != nil {
 		//create custom error
-		return models.LoginResponse{}, models.NewError(err)
+		return models.LoginResponse{}, models.Error{
+			Code:    http.StatusBadRequest,
+			Message: "invalid input data",
+			Params:  fmt.Sprintf("arg: %v", arg),
+			Err:     err,
+		}
 	}
 	// Example: Query user by username (adjust predicate as needed)
 	foundUser, err := u.db.GetUserByEmail(ctx, arg.Email)
 
 	if err != nil {
-		return models.LoginResponse{}, models.NewError(err)
+		return models.LoginResponse{}, models.IndentifyDbError(err).AddParams(fmt.Sprintf("arg: %v", arg))
 	}
 	if !utils.CheckPassword(foundUser.Password, arg.Password) {
-		return models.LoginResponse{}, models.NewError(fmt.Errorf("invalid email or password"))
+		return models.LoginResponse{}, models.Error{
+			Code:    http.StatusUnauthorized,
+			Message: "invalid email or password",
+			Params:  fmt.Sprintf("arg: %v", arg),
+			Err:     fmt.Errorf("invalid email or password"),
+		}
 	}
 	token, err := u.tokenManager.CreateToken(utils.Payload{ID: foundUser.ID, IssuedAt: time.Now()})
 	if err != nil {
-		return models.LoginResponse{}, models.NewError(err)
+		return models.LoginResponse{}, err
 	}
 	foundUser.Password = ""
 
@@ -99,7 +115,7 @@ func (u *user) Login(ctx context.Context, arg models.LoginRequest) (models.Login
 func (u *user) SearchUsers(ctx context.Context, keyword string) ([]models.User, error) {
 	users, err := u.db.SearchUsers(ctx, keyword)
 	if err != nil {
-		return nil, models.NewError(err)
+		return nil, models.IndentifyDbError(err).AddParams(fmt.Sprintf("keyword: %v", keyword))
 	}
 	var modelUsers []models.User
 	for _, user := range users {
@@ -110,7 +126,7 @@ func (u *user) SearchUsers(ctx context.Context, keyword string) ([]models.User, 
 func (u *user) GetUser(ctx context.Context, uid uuid.UUID) (models.User, error) {
 	user, err := u.db.GetUser(ctx, uid)
 	if err != nil {
-		return models.User{}, models.NewError(err)
+		return models.User{}, models.IndentifyDbError(err).AddParams(fmt.Sprintf("uid: %v", uid))
 	}
 	user.Password = ""
 	return convertDbUserToModelUser(user), nil
@@ -125,7 +141,8 @@ func (u *user) UpdateUser(ctx context.Context, uid uuid.UUID, input models.Updat
 		Phone:     input.Phone,
 	})
 	if err != nil {
-		return models.User{}, models.NewError(err)
+		err = models.IndentifyDbError(err).AddParams(fmt.Sprintf("uid: %v, input: %v", uid, input))
+		return models.User{}, err
 	}
 	user.Password = ""
 	return convertDbUserToModelUser(user), nil

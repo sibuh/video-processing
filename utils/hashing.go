@@ -2,6 +2,8 @@ package utils
 
 import (
 	"errors"
+	"net/http"
+	"video-processing/models"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -13,7 +15,12 @@ var ErrHashingFailed = errors.New("hashing failed")
 func HashPassword(pass string) (string, error) {
 	byt, err := bcrypt.GenerateFromPassword([]byte(pass), salt)
 	if err != nil {
-		return "", errors.Join(err, ErrHashingFailed)
+		return "", models.Error{
+			Code:        http.StatusInternalServerError,
+			Message:     "internal server error",
+			Description: "failed to hash password",
+			Err:         errors.Join(err, ErrHashingFailed),
+		}
 	}
 	return string(byt), nil
 }
