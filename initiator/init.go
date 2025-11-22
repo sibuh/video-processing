@@ -69,7 +69,7 @@ func Init() {
 	videoService := services.NewVideoProcessor(logger, minioClient, db, streamer, config.Minio.UrlExpiry)
 
 	// http handlers
-	middlewares := handlers.NewMiddleware(tm, enforcer.Enforcer)
+	middlewares := handlers.NewMiddleware(tm, enforcer.Enforcer, logger)
 	userHandler := handlers.NewUser(userService)
 	videoHandler := handlers.NewVideoHandler(logger, config.Timeout.Duration, videoService)
 

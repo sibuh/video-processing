@@ -3,7 +3,9 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
+	"video-processing/models"
 
 	"github.com/google/uuid"
 	"github.com/o1egl/paseto"
@@ -53,10 +55,25 @@ func NewTokenManager(key string, duration time.Duration, p paseto.V2) TokenManag
 func (tm tokenManager) CreateToken(p Payload) (string, error) {
 	p.ExpireAt = p.IssuedAt.Add(tm.dur)
 	if len(tm.key) != 32 {
-		return "", errors.Join(ErrInvalidSigningKey, fmt.Errorf("bad key length %d", len(tm.key)))
+		return "", models.Error{
+			Code:        http.StatusInternalServerError,
+			Message:     "internal server error",
+			Description: "failed to create token",
+			Params:      fmt.Sprintf("payload:%v", p),
+			Err:         fmt.Errorf("bad key length %d", len(tm.key)),
+		}
 	}
-
-	return tm.paseto.Encrypt([]byte(tm.key), p, nil)
+	token, err := tm.paseto.Encrypt([]byte(tm.key), p, nil)
+	if err != nil {
+		return "", models.Error{
+			Code:        http.StatusInternalServerError,
+			Message:     "internal server error",
+			Description: "failed to create token",
+			Params:      fmt.Sprintf("payload:%v", p),
+			Err:         fmt.Errorf("failed to create token: %w", err),
+		}
+	}
+	return token, nil
 }
 
 func (tm tokenManager) VerifyToken(token string) (Payload, error) {
@@ -64,10 +81,22 @@ func (tm tokenManager) VerifyToken(token string) (Payload, error) {
 
 	err := tm.paseto.Decrypt(token, []byte(tm.key), payload, nil)
 	if err != nil {
-		return Payload{}, errors.Join(ErrInvalidToken, err)
+		return Payload{}, models.Error{
+			Code:        http.StatusInternalServerError,
+			Message:     "internal server error",
+			Description: "failed to verify token",
+			Params:      fmt.Sprintf("token:%v", token),
+			Err:         fmt.Errorf("failed to verify token: %w", err),
+		}
 	}
 	if !payload.valid() {
-		return Payload{}, errors.Join(ErrInvalidToken, fmt.Errorf("token expired"))
+		return Payload{}, models.Error{
+			Code:        http.StatusUnauthorized,
+			Message:     "unauthorized",
+			Description: "invalid access token",
+			Params:      fmt.Sprintf("token:%v", token),
+			Err:         fmt.Errorf("token expired"),
+		}
 	}
 
 	return *payload, nil

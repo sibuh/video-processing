@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
-	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"video-processing/models"
 
 	"github.com/minio/minio-go/v7"
 )
@@ -45,70 +46,119 @@ var variants = []Variant{
 	{Name: "144p", Width: 256, Height: 144, Bitrate: "100k"},
 }
 
-func Process(ctx context.Context, logger *slog.Logger, bucket, sourceObj, resultsPrefix string, client *minio.Client) {
+func (rc *redisConsumer) ProcessVideo(ctx context.Context, bucket, sourceObj, resultsPrefix string) error {
 
 	// Create a temp working dir for the job; cleaned up on exit.
 	workDir, err := os.MkdirTemp("", "video-job-*")
 	if err != nil {
-		logger.Error("failed create temp dir", "error", err)
+		return models.Error{
+			Code:        http.StatusInternalServerError,
+			Message:     "internal server error",
+			Description: "failed to create working directory for video processing",
+			Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
+			Err:         fmt.Errorf("failed to create temp dir: %w", err),
+		}
 	}
 	defer os.RemoveAll(workDir) // cleanup everything at the end
-	logger.Info("workdir", "workDir", workDir)
+	rc.logger.Info("workdir", "workDir", workDir)
 
 	// Step 1: download source video from MinIO to local file
 	localSourcePath := filepath.Join(workDir, "source"+filepath.Ext(sourceObj))
-	logger.Info("downloading s3://%s/%s -> %s", "bucket", bucket, "sourceObj", sourceObj, "localSourcePath", localSourcePath)
-	if err := downloadFromMinio(ctx, client, bucket, sourceObj, localSourcePath); err != nil {
-		logger.Error("download failed", "error", err)
+	rc.logger.Info("downloading s3://%s/%s -> %s", "bucket", bucket, "sourceObj", sourceObj, "localSourcePath", localSourcePath)
+	if err := downloadFromMinio(ctx, rc.mc, bucket, sourceObj, localSourcePath); err != nil {
+		return models.Error{
+			Code:        http.StatusInternalServerError,
+			Message:     "internal server error",
+			Description: "failed to download source video from MinIO",
+			Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
+			Err:         fmt.Errorf("failed to download source video from MinIO: %w", err),
+		}
 	}
-	logger.Info("download complete")
+	rc.logger.Info("download complete")
 
 	// For each variant: transcode -> generate HLS -> thumbnail -> upload
 	for _, v := range variants {
-		logger.Info("processing variant", "name", v.Name, "width", v.Width, "height", v.Height, "bitrate", v.Bitrate)
+		rc.logger.Info("processing variant", "name", v.Name, "width", v.Width, "height", v.Height, "bitrate", v.Bitrate)
 
 		// create variant output dir inside workDir
 		varDir := filepath.Join(workDir, v.Name)
 		if err := os.MkdirAll(varDir, 0o755); err != nil {
-			logger.Error("mkdir", "error", err)
+			return models.Error{
+				Code:        http.StatusInternalServerError,
+				Message:     "internal server error",
+				Description: "failed to create variant output directory",
+				Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
+				Err:         fmt.Errorf("failed to create variant output directory: %w", err),
+			}
 		}
 
 		// 2.a Transcode to MP4 (local)
 		mp4Path := filepath.Join(varDir, fmt.Sprintf("%s.mp4", v.Name))
 		if err := transcodeToMP4(ctx, localSourcePath, mp4Path, v); err != nil {
-			logger.Error("transcode failed", "error", err)
+			return models.Error{
+				Code:        http.StatusInternalServerError,
+				Message:     "internal server error",
+				Description: "failed to transcode video to MP4",
+				Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
+				Err:         fmt.Errorf("failed to transcode video to MP4: %w", err),
+			}
 		}
-		logger.Info("transcoded mp4", "mp4Path", mp4Path)
+		rc.logger.Info("transcoded mp4", "mp4Path", mp4Path)
 
 		// 2.b Generate HLS (creates index.m3u8 and segment files in varDir/hls/)
 		hlsDir := filepath.Join(varDir, "hls")
 		if err := os.MkdirAll(hlsDir, 0o755); err != nil {
-			logger.Error("mkdir hls", "error", err)
+			return models.Error{
+				Code:        http.StatusInternalServerError,
+				Message:     "internal server error",
+				Description: "failed to create HLS directory",
+				Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
+				Err:         fmt.Errorf("failed to create HLS directory: %w", err),
+			}
 		}
 		if err := generateHLS(ctx, mp4Path, hlsDir); err != nil {
-			logger.Error("hls generation failed", "error", err)
+			return models.Error{
+				Code:        http.StatusInternalServerError,
+				Message:     "internal server error",
+				Description: "failed to generate HLS",
+				Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
+				Err:         fmt.Errorf("failed to generate HLS: %w", err),
+			}
 		}
-		logger.Info("hls generated at", "hlsDir", hlsDir)
+		rc.logger.Info("hls generated at", "hlsDir", hlsDir)
 
 		// 2.c Generate thumbnail (we capture at 5 seconds)
 		thumbPath := filepath.Join(varDir, fmt.Sprintf("%s-thumb.jpg", v.Name))
 		if err := generateThumbnail(ctx, mp4Path, thumbPath, 5); err != nil {
-			logger.Error("thumbnail failed", "error", err)
+			return models.Error{
+				Code:        http.StatusInternalServerError,
+				Message:     "internal server error",
+				Description: "failed to generate thumbnail",
+				Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
+				Err:         fmt.Errorf("failed to generate thumbnail: %w", err),
+			}
 		}
-		logger.Info("thumbnail generated", "thumbPath", thumbPath)
+		rc.logger.Info("thumbnail generated", "thumbPath", thumbPath)
 
 		// 2.d Upload mp4 + hls files + thumbnail to MinIO under resultsPrefix/<variant>/
 		destPrefix := filepath.Join(resultsPrefix, v.Name) // e.g., processed/uuid/1080p
 		// Normalize to use forward slashes (MinIO object keys use /)
 		destPrefix = filepath.ToSlash(destPrefix)
-		logger.Info("uploading files to s3://", "bucket", bucket, "destPrefix", destPrefix)
-		if err := uploadDirToMinio(ctx, client, bucket, destPrefix, varDir); err != nil {
-			logger.Error("upload failed", "error", err)
+		rc.logger.Info("uploading files to s3://", "bucket", bucket, "destPrefix", destPrefix)
+		if err := uploadDirToMinio(ctx, rc.mc, bucket, destPrefix, varDir); err != nil {
+			return models.Error{
+				Code:        http.StatusInternalServerError,
+				Message:     "internal server error",
+				Description: "failed to upload files to MinIO",
+				Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
+				Err:         fmt.Errorf("failed to upload files to MinIO: %w", err),
+			}
 		}
-		logger.Info("upload complete for variant", "name", v.Name)
+		rc.logger.Info("upload complete for variant", "name", v.Name)
 	}
 
 	log.Println("All variants processed and uploaded successfully")
+	return nil
 }
 
 /* ----------------------------
