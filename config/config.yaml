@@ -14,7 +14,7 @@ token:
   duration: 1h
   key: qwertyuiopasdfghjklzxcvbnm123456
 minio:
-  endpoint: localhost:9000
+  endpoint: minio:9000
   access_key: minioadmin
   secret_key: minioadmin
   url_expiry: 168h
