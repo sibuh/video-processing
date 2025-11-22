@@ -16,7 +16,7 @@ import (
 type VideoProcessor interface {
 	CreateBucket(ctx context.Context, bucketName string) error
 	ListBuckets(ctx context.Context) ([]minio.BucketInfo, error)
-	Upload(ctx context.Context, userID uuid.UUID, req models.UploadVideoRequest) (string, error)
+	Upload(ctx context.Context, userID uuid.UUID, req models.UploadVideoRequest) ([]string, error)
 }
 
 type videoProcessor struct {
@@ -53,17 +53,19 @@ func (vp *videoProcessor) ListBuckets(ctx context.Context) ([]minio.BucketInfo, 
 	buckets, err := vp.minioClient.ListBuckets(ctx)
 	if err != nil {
 		return nil, models.Error{
-			Code:    http.StatusInternalServerError,
-			Message: "internal server error",
-			Err:     fmt.Errorf("failed to list buckets: %w", err),
+			Code:        http.StatusInternalServerError,
+			Message:     "internal server error",
+			Description: "failed to fetch buckets",
+			Err:         fmt.Errorf("failed to list buckets: %w", err),
 		}
 	}
 	return buckets, nil
 }
-func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req models.UploadVideoRequest) (string, error) {
+func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req models.UploadVideoRequest) ([]string, error) {
 	paramsInString := fmt.Sprintf("userID: %v, req: %v", userID, req)
+	var urls []string
 	if err := req.Validate(); err != nil {
-		return "", models.Error{
+		return urls, models.Error{
 			Code:    http.StatusBadRequest,
 			Message: "invalid input data",
 			Params:  paramsInString,
@@ -73,18 +75,19 @@ func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req mode
 	for _, fileHeader := range req.Videos {
 		file, err := fileHeader.Open()
 		if err != nil {
-			return "", models.Error{
-				Code:    http.StatusInternalServerError,
-				Message: "internal server error",
-				Params:  paramsInString,
-				Err:     fmt.Errorf("failed to open file: %w", err),
+			return urls, models.Error{
+				Code:        http.StatusInternalServerError,
+				Message:     "internal server error",
+				Description: "failed to open file",
+				Params:      paramsInString,
+				Err:         fmt.Errorf("failed to open file: %w", err),
 			}
 		}
 		defer file.Close()
 
 		buckets, err := vp.ListBuckets(ctx)
 		if err != nil {
-			return "", err
+			return urls, err
 		}
 		bucketExist := false
 		for _, bucket := range buckets {
@@ -95,25 +98,27 @@ func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req mode
 		if !bucketExist {
 			err := vp.CreateBucket(ctx, userID.String())
 			if err != nil {
-				return "", err
+				return urls, err
 			}
 		}
 		_, err = vp.minioClient.PutObject(ctx, userID.String(), fileHeader.Filename, file, fileHeader.Size, minio.PutObjectOptions{
 			ContentType: fileHeader.Header.Get("Content-Type"),
 		})
 		if err != nil {
-			return "", models.Error{
-				Code:    http.StatusInternalServerError,
-				Message: "internal server error",
-				Params:  paramsInString,
-				Err:     fmt.Errorf("failed to upload file: %w", err),
+			return urls, models.Error{
+				Code:        http.StatusInternalServerError,
+				Message:     "internal server error",
+				Description: "failed to upload file to storage",
+				Params:      paramsInString,
+				Err:         fmt.Errorf("failed to upload file to storage: %w", err),
 			}
 		}
 		// generate url
 		url, err := vp.getVideoURL(userID.String(), fileHeader.Filename, vp.urlExpiry)
 		if err != nil {
-			return "", err
+			return urls, err
 		}
+		urls = append(urls, url)
 		// save video metadata to database
 		_, err = vp.db.CreateVideo(ctx, db.CreateVideoParams{
 			UserID:        userID,
@@ -127,11 +132,12 @@ func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req mode
 			Url:           url,
 		})
 		if err != nil {
-			return "", models.Error{
-				Code:    http.StatusInternalServerError,
-				Message: "internal server error",
-				Params:  paramsInString,
-				Err:     fmt.Errorf("failed to save video metadata: %w", err),
+			return urls, models.Error{
+				Code:        http.StatusInternalServerError,
+				Message:     "internal server error",
+				Description: "failed to save video metadata to database",
+				Params:      paramsInString,
+				Err:         fmt.Errorf("failed to save video metadata to database: %w", err),
 			}
 		}
 		err = vp.streamer.Stream(ctx, map[string]interface{}{
@@ -139,15 +145,16 @@ func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req mode
 			"key":    fileHeader.Filename,
 		})
 		if err != nil {
-			return "", models.Error{
-				Code:    http.StatusInternalServerError,
-				Message: "internal server error",
-				Params:  paramsInString,
-				Err:     fmt.Errorf("failed to stream video: %w", err),
+			return urls, models.Error{
+				Code:        http.StatusInternalServerError,
+				Message:     "internal server error",
+				Description: "failed to stream event to redis for video processing",
+				Params:      paramsInString,
+				Err:         fmt.Errorf("failed to stream event to redis for video processing: %w", err),
 			}
 		}
 	}
-	return "", nil
+	return urls, nil
 }
 
 func (vp *videoProcessor) getVideoURL(bucketName, objectName string, expiry time.Duration) (string, error) {
@@ -156,10 +163,11 @@ func (vp *videoProcessor) getVideoURL(bucketName, objectName string, expiry time
 	url, err := vp.minioClient.PresignedGetObject(ctx, bucketName, objectName, expiry, nil)
 	if err != nil {
 		return "", models.Error{
-			Code:    http.StatusInternalServerError,
-			Message: "internal server error",
-			Params:  fmt.Sprintf("bucketName: %v, objectName: %v, expiry: %v", bucketName, objectName, expiry),
-			Err:     fmt.Errorf("failed to generate video url: %w", err),
+			Code:        http.StatusInternalServerError,
+			Message:     "internal server error",
+			Description: "failed to generate video url for playback from storage",
+			Params:      fmt.Sprintf("bucketName: %v, objectName: %v, expiry: %v", bucketName, objectName, expiry),
+			Err:         fmt.Errorf("failed to generate video url for playback from storage: %w", err),
 		}
 	}
 	return url.String(), nil
