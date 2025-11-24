@@ -1,4 +1,4 @@
-package services_test
+package user_test
 
 import (
 	"video-processing/initiator"

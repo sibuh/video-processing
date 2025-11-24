@@ -1,4 +1,4 @@
-package services_test
+package user_test
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"video-processing/database/db"
 	"video-processing/initiator"
 	"video-processing/models"
-	"video-processing/services"
+	"video-processing/services/user"
 
 	"video-processing/utils"
 
@@ -27,7 +27,7 @@ func TestRegister(t *testing.T) {
 	// Clean up any existing data
 	instance.pool.Exec(context.Background(), "TRUNCATE TABLE users CASCADE")
 
-	u := services.NewUser(*db, instance.tm)
+	u := user.NewUser(*db, instance.tm)
 	testCases := []struct {
 		name  string
 		input models.UserRegistrationRequest
@@ -144,7 +144,7 @@ func TestLogin(t *testing.T) {
 	// Clean up any existing data
 	instance.pool.Exec(ctx, "TRUNCATE TABLE users CASCADE")
 
-	u := services.NewUser(*db, instance.tm)
+	u := user.NewUser(*db, instance.tm)
 
 	// Register a user first
 	registrationInput := models.UserRegistrationRequest{
@@ -233,7 +233,7 @@ func TestGetUser(t *testing.T) {
 	// Clean up any existing data
 	instance.pool.Exec(ctx, "TRUNCATE TABLE users CASCADE")
 
-	u := services.NewUser(*db, instance.tm)
+	u := user.NewUser(*db, instance.tm)
 
 	// Register a user first
 	registrationInput := models.UserRegistrationRequest{
@@ -290,7 +290,7 @@ func TestUpdateUser(t *testing.T) {
 	// Clean up any existing data
 	instance.pool.Exec(ctx, "TRUNCATE TABLE users CASCADE")
 
-	u := services.NewUser(*db, instance.tm)
+	u := user.NewUser(*db, instance.tm)
 
 	// Register a user first
 	registrationInput := models.UserRegistrationRequest{
@@ -363,7 +363,7 @@ func TestSearchUsers(t *testing.T) {
 	// Clean up any existing data
 	instance.pool.Exec(ctx, "TRUNCATE TABLE users CASCADE")
 
-	u := services.NewUser(*db, instance.tm)
+	u := user.NewUser(*db, instance.tm)
 
 	// Register multiple users
 	users := []models.UserRegistrationRequest{

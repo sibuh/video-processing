@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"video-processing/models"
-	"video-processing/services"
+	"video-processing/services/video"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -20,10 +20,10 @@ type VideoProcessor interface {
 type videoHandler struct {
 	logger   *slog.Logger
 	timeout  time.Duration
-	services services.VideoProcessor
+	services video.VideoProcessor
 }
 
-func NewVideoHandler(logger *slog.Logger, timeout time.Duration, services services.VideoProcessor) VideoProcessor {
+func NewVideoHandler(logger *slog.Logger, timeout time.Duration, services video.VideoProcessor) VideoProcessor {
 	return &videoHandler{
 		logger:   logger,
 		timeout:  timeout,
