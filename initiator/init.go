@@ -8,7 +8,8 @@ import (
 	"video-processing/database/db"
 	"video-processing/handlers"
 	"video-processing/routing"
-	"video-processing/services"
+	"video-processing/services/user"
+	"video-processing/services/video"
 	"video-processing/utils"
 
 	"github.com/gin-gonic/gin"
@@ -55,9 +56,9 @@ func Init() {
 	// init minio client
 	minioClient := InitMinio(logger, config)
 	// init streamer
-	streamer := services.NewRedisStreamer("video_stream", logger, redisClient)
+	streamer := video.NewRedisStreamer("video_stream", logger, redisClient)
 	// init consumer and run it in a separate goroutine
-	consumer := services.NewRedisConsumer("video_stream", "video_group", "video_consumer_1", logger, redisClient, minioClient, db)
+	consumer := video.NewRedisConsumer("video_stream", "video_group", "video_consumer_1", logger, redisClient, minioClient, db)
 	go func() {
 		if err := consumer.Consume(context.Background()); err != nil {
 			logger.Error("❌ Consumer error", "error", err)
@@ -65,8 +66,8 @@ func Init() {
 	}()
 
 	// services
-	userService := services.NewUser(*db, tm)
-	videoService := services.NewVideoProcessor(logger, minioClient, db, streamer, config.Minio.UrlExpiry)
+	userService := user.NewUser(*db, tm)
+	videoService := video.NewVideoProcessor(logger, minioClient, db, streamer, config.Minio.UrlExpiry)
 
 	// http handlers
 	middlewares := handlers.NewMiddleware(tm, enforcer.Enforcer, logger)

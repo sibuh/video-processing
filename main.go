@@ -17,7 +17,7 @@ import (
 // @license.name
 // @license.url
 
-// @host      localhost:8080
+// @host      localhost:8888
 // @BasePath  /v1
 
 func main() {
