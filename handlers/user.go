@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"video-processing/models"
-	"video-processing/services"
+	"video-processing/services/user"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -18,12 +18,12 @@ type User interface {
 	GetUser(ctx *gin.Context)
 	UpdateUser(ctx *gin.Context)
 }
-type user struct {
-	userService services.UserService
+type userHandler struct {
+	userService user.UserService
 }
 
-func NewUser(us services.UserService) User {
-	return &user{
+func NewUser(us user.UserService) User {
+	return &userHandler{
 		userService: us,
 	}
 }
@@ -38,7 +38,7 @@ func NewUser(us services.UserService) User {
 // @Success 201 {object} models.User
 // @Failure 400 {object} map[string]string
 // @Router /v1/users [post]
-func (u *user) RegisterUser(ctx *gin.Context) {
+func (uh *userHandler) RegisterUser(ctx *gin.Context) {
 	var urr = models.UserRegistrationRequest{}
 	if err := ctx.ShouldBindJSON(&urr); err != nil {
 		er := &models.Error{
@@ -49,7 +49,7 @@ func (u *user) RegisterUser(ctx *gin.Context) {
 		ctx.Error(er)
 		return
 	}
-	usr, err := u.userService.Register(ctx, urr)
+	usr, err := uh.userService.Register(ctx, urr)
 	if err != nil {
 		ctx.Error(err)
 		return
@@ -73,7 +73,7 @@ func (u *user) RegisterUser(ctx *gin.Context) {
 // @Success 200 {object} models.User
 // @Failure 400 {object} map[string]any
 // @Router /v1/users/login [post]
-func (u *user) LoginUser(ctx *gin.Context) {
+func (uh *userHandler) LoginUser(ctx *gin.Context) {
 	var lr = models.LoginRequest{}
 	if err := ctx.ShouldBindJSON(&lr); err != nil {
 		err := &models.Error{
@@ -84,7 +84,7 @@ func (u *user) LoginUser(ctx *gin.Context) {
 		ctx.Error(err)
 		return
 	}
-	res, err := u.userService.Login(ctx, lr)
+	res, err := uh.userService.Login(ctx, lr)
 	if err != nil {
 		ctx.Error(err)
 		return
@@ -108,9 +108,9 @@ func (u *user) LoginUser(ctx *gin.Context) {
 // @Failure 400 {object} map[string]any
 // @Router /v1/users/search [get]
 // @Security BearerAuth
-func (u *user) SearchUsers(ctx *gin.Context) {
+func (uh *userHandler) SearchUsers(ctx *gin.Context) {
 	keyword := ctx.Query("keyword")
-	users, err := u.userService.SearchUsers(ctx, keyword)
+	users, err := uh.userService.SearchUsers(ctx, keyword)
 	if err != nil {
 		ctx.Error(err)
 		return
@@ -133,7 +133,7 @@ func (u *user) SearchUsers(ctx *gin.Context) {
 // @Failure 400 {object} map[string]any
 // @Router /v1/users [get]
 // @Security BearerAuth
-func (u *user) GetUser(ctx *gin.Context) {
+func (uh *userHandler) GetUser(ctx *gin.Context) {
 	uid, ok := ctx.Value("user_id").(uuid.UUID)
 	if !ok {
 		err := &models.Error{
@@ -144,7 +144,7 @@ func (u *user) GetUser(ctx *gin.Context) {
 		ctx.Error(err)
 		return
 	}
-	user, err := u.userService.GetUser(ctx, uid)
+	user, err := uh.userService.GetUser(ctx, uid)
 	if err != nil {
 		ctx.Error(err)
 		return
@@ -168,7 +168,7 @@ func (u *user) GetUser(ctx *gin.Context) {
 // @Failure 400 {object} map[string]any
 // @Router /v1/users [patch]
 // @Security BearerAuth
-func (u *user) UpdateUser(ctx *gin.Context) {
+func (uh *userHandler) UpdateUser(ctx *gin.Context) {
 	uid, ok := ctx.Value("user_id").(uuid.UUID)
 	if !ok {
 		err := &models.Error{
@@ -189,7 +189,7 @@ func (u *user) UpdateUser(ctx *gin.Context) {
 		ctx.Error(err)
 		return
 	}
-	user, err := u.userService.UpdateUser(ctx, uid, urr)
+	user, err := uh.userService.UpdateUser(ctx, uid, urr)
 	if err != nil {
 		ctx.Error(err)
 		return
