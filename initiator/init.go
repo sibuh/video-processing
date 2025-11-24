@@ -57,7 +57,7 @@ func Init() {
 	// init streamer
 	streamer := services.NewRedisStreamer("video_stream", logger, redisClient)
 	// init consumer and run it in a separate goroutine
-	consumer := services.NewRedisConsumer("video_stream", "video_group", "video_consumer_1", logger, redisClient, minioClient)
+	consumer := services.NewRedisConsumer("video_stream", "video_group", "video_consumer_1", logger, redisClient, minioClient, db)
 	go func() {
 		if err := consumer.Consume(context.Background()); err != nil {
 			logger.Error("❌ Consumer error", "error", err)

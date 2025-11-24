@@ -7,9 +7,8 @@ INSERT INTO original_videos (
     bucket,
     key,
     file_size_bytes,
-    content_type,
-    url
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *;
+    content_type
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *;
 
 -- name: GetVideo :one
 SELECT * FROM original_videos WHERE id = $1;
@@ -26,12 +25,25 @@ SET
     key = COALESCE(NULLIF($4, ''), key),
     file_size_bytes = COALESCE(NULLIF($5, 0), file_size_bytes),
     content_type = COALESCE(NULLIF($6, ''), content_type),
-    url = COALESCE(NULLIF($7, ''), url),
-    duration = COALESCE(NULLIF($8, 0), duration),
-    width = COALESCE(NULLIF($9, 0), width),
-    height = COALESCE(NULLIF($10, 0), height),
-    metadata = COALESCE(NULLIF($11, '{}'), metadata)
-WHERE id = $12 RETURNING *;
+    duration = COALESCE(NULLIF($7, 0), duration),
+    width = COALESCE(NULLIF($8, 0), width),
+    height = COALESCE(NULLIF($9, 0), height),
+    metadata = COALESCE(NULLIF($10, '{}'), metadata)
+WHERE id = $11 RETURNING *;
 
 -- name: DeleteVideo :one
 DELETE FROM original_videos WHERE id = $1 RETURNING *;
+
+-- name: UpdateOriginalVideoStatus :one
+UPDATE original_videos
+SET 
+    status = $1
+WHERE id = $2 RETURNING *;
+
+-- name: SaveProcessedVideoMetadata :one
+INSERT INTO processed_videos (
+    video_id,
+    content_type,
+    bucket,
+    key
+) VALUES ($1, $2, $3, $4) RETURNING *;
