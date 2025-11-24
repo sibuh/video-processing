@@ -15,56 +15,43 @@ var (
 )
 
 type Error struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Err     error  `json:"err"`
+	Code        int    `json:"code"`
+	Message     string `json:"message"`
+	Description string `json:"description"`
+	Params      string `json:"params"`
+	Err         error  `json:"err"`
 }
 
 func (a Error) Error() string {
-	return fmt.Sprintf("%d: %s: %s", a.Code, a.Message, a.Err.Error())
+	return fmt.Sprintf("%d: %s: %s: %s: %+v", a.Code, a.Message, a.Description, a.Params, a.Err)
 }
 
-func NewError(err error) *Error {
-	var e *Error
+func IndentifyDbError(err error) Error {
+	var e Error
 	switch true {
 	case errors.Is(err, sql.ErrNoRows):
-		e = &Error{
+		e = Error{
 			Code:    http.StatusConflict,
 			Message: "resource already exists",
 			Err:     err,
 		}
 	case errors.Is(err, sql.ErrNoRows):
-		e = &Error{
+		e = Error{
 			Code:    http.StatusNotFound,
 			Message: "resource not found",
 			Err:     err,
 		}
 
-	case errors.Is(err, sql.ErrNoRows):
-		e = &Error{
-			Code:    http.StatusNotFound,
-			Message: "resource not found",
-			Err:     err,
-		}
-
-	case errors.Is(err, ErrInvalidInputData):
-		e = &Error{
-			Code:    http.StatusBadRequest,
-			Message: "invalid input data",
-			Err:     err,
-		}
-	case errors.Is(err, ErrInvalidUUID):
-		e = &Error{
-			Code:    http.StatusBadRequest,
-			Message: "failed to parse user id invalid uuid",
-			Err:     err,
-		}
 	default:
-		e = &Error{
+		e = Error{
 			Code:    http.StatusInternalServerError,
 			Message: "internal server error",
 			Err:     err,
 		}
 	}
+	return e
+}
+func (e Error) AddParams(params string) Error {
+	e.Params += params
 	return e
 }

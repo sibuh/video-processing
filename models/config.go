@@ -22,9 +22,10 @@ type Config struct {
 		Key      string        `mapstructure:"key"`
 	} `mapstructure:"token"`
 	Minio struct {
-		Endpoint  string `mapstructure:"endpoint"`
-		AccessKey string `mapstructure:"access_key"`
-		SecretKey string `mapstructure:"secret_key"`
+		Endpoint  string        `mapstructure:"endpoint"`
+		AccessKey string        `mapstructure:"access_key"`
+		SecretKey string        `mapstructure:"secret_key"`
+		UrlExpiry time.Duration `mapstructure:"url_expiry"`
 	} `mapstructure:"minio"`
 	Redis struct {
 		Host     string `mapstructure:"host"`

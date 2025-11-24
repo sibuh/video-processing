@@ -50,15 +50,26 @@ func Init() {
 		config.Token.Duration, *paseto.NewV2())
 
 	db := db.New(pool)
+	// init redis
+	redisClient := NewRedisClient(logger, config)
 	// init minio client
 	minioClient := InitMinio(logger, config)
-	// services
+	// init streamer
+	streamer := services.NewRedisStreamer("video_stream", logger, redisClient)
+	// init consumer and run it in a separate goroutine
+	consumer := services.NewRedisConsumer("video_stream", "video_group", "video_consumer_1", logger, redisClient, minioClient, db)
+	go func() {
+		if err := consumer.Consume(context.Background()); err != nil {
+			logger.Error("❌ Consumer error", "error", err)
+		}
+	}()
 
+	// services
 	userService := services.NewUser(*db, tm)
-	videoService := services.NewVideoProcessor(logger, minioClient)
+	videoService := services.NewVideoProcessor(logger, minioClient, db, streamer, config.Minio.UrlExpiry)
 
 	// http handlers
-	middlewares := handlers.NewMiddleware(tm, enforcer.Enforcer)
+	middlewares := handlers.NewMiddleware(tm, enforcer.Enforcer, logger)
 	userHandler := handlers.NewUser(userService)
 	videoHandler := handlers.NewVideoHandler(logger, config.Timeout.Duration, videoService)
 

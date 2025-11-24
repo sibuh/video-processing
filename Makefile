@@ -29,10 +29,10 @@ help:
 # migration commands
 .PHONY: migrate-up migrate-down migrate-redo migrate-create
 migrate-up:
-	$(MIGRATE) -path $(MIGRATE_PATH) -database $(DATABASE) up
+	$(MIGRATE) -path $(MIGRATE_PATH) -database $(DATABASE) up $(step)
 
 migrate-down:
-	$(MIGRATE) -path $(MIGRATE_PATH) -database $(DATABASE) down
+	$(MIGRATE) -path $(MIGRATE_PATH) -database $(DATABASE) down $(step)
 
 migrate-redo:
 	$(MIGRATE) -path $(MIGRATE_PATH) -database $(DATABASE) redo
