@@ -10,7 +10,6 @@ CREATE TABLE original_videos (
     key VARCHAR(255) NOT NULL,
     file_size_bytes BIGINT NOT NULL,
     content_type VARCHAR(50) NOT NULL,
-    url VARCHAR NOT NULL,
     duration INT NOT NULL DEFAULT 0,
     width INT NOT NULL DEFAULT 0,
     height INT NOT NULL DEFAULT 0,
@@ -23,7 +22,7 @@ CREATE TABLE processed_videos (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     video_id UUID NOT NULL REFERENCES original_videos(id) ON DELETE CASCADE,
     -- What is this file?
-    asset_type VARCHAR(20) NOT NULL, -- e.g., '1080p', '720p', 'thumbnail', 'hls'
+    content_type VARCHAR(20) NOT NULL, -- e.g., '1080p', '720p', 'thumbnail', 'hls'
     -- Location
     bucket VARCHAR(255) NOT NULL,
     key VARCHAR(255) NOT NULL,    
@@ -31,6 +30,5 @@ CREATE TABLE processed_videos (
     width INT NOT NULL DEFAULT 0,
     height INT NOT NULL DEFAULT 0,
     file_size_bytes BIGINT NOT NULL,
-    url VARCHAR NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

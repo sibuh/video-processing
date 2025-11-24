@@ -22,7 +22,6 @@ type OriginalVideo struct {
 	Key           string    `json:"key"`
 	FileSizeBytes int64     `json:"file_size_bytes"`
 	ContentType   string    `json:"content_type"`
-	Url           string    `json:"url"`
 	Duration      int32     `json:"duration"`
 	Width         int32     `json:"width"`
 	Height        int32     `json:"height"`
@@ -34,13 +33,12 @@ type OriginalVideo struct {
 type ProcessedVideo struct {
 	ID            uuid.UUID `json:"id"`
 	VideoID       uuid.UUID `json:"video_id"`
-	AssetType     string    `json:"asset_type"`
+	ContentType   string    `json:"content_type"`
 	Bucket        string    `json:"bucket"`
 	Key           string    `json:"key"`
 	Width         int32     `json:"width"`
 	Height        int32     `json:"height"`
 	FileSizeBytes int64     `json:"file_size_bytes"`
-	Url           string    `json:"url"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 

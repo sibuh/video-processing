@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"video-processing/models"
 
+	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 )
 
@@ -46,8 +47,11 @@ var variants = []Variant{
 	{Name: "144p", Width: 256, Height: 144, Bitrate: "100k"},
 }
 
-func (rc *redisConsumer) ProcessVideo(ctx context.Context, bucket, sourceObj, resultsPrefix string) error {
-
+func (rc *redisConsumer) ProcessVideo(ctx context.Context, values map[string]interface{}) error {
+	bucket := values["bucket"].(string)
+	sourceObj := values["key"].(string)
+	videoID := values["video_id"].(string)
+	resultsPrefix := fmt.Sprintf("processed/%s", uuid.New().String())
 	// Create a temp working dir for the job; cleaned up on exit.
 	workDir, err := os.MkdirTemp("", "video-job-*")
 	if err != nil {
@@ -145,7 +149,7 @@ func (rc *redisConsumer) ProcessVideo(ctx context.Context, bucket, sourceObj, re
 		// Normalize to use forward slashes (MinIO object keys use /)
 		destPrefix = filepath.ToSlash(destPrefix)
 		rc.logger.Info("uploading files to s3://", "bucket", bucket, "destPrefix", destPrefix)
-		if err := uploadDirToMinio(ctx, rc.mc, bucket, destPrefix, varDir); err != nil {
+		if err := rc.uploadDirToMinio(ctx, rc.mc, bucket, destPrefix, varDir, uuid.MustParse(videoID)); err != nil {
 			return models.Error{
 				Code:        http.StatusInternalServerError,
 				Message:     "internal server error",
@@ -179,7 +183,7 @@ func downloadFromMinio(ctx context.Context, client *minio.Client, bucket, object
 // uploadDirToMinio walks a local directory and uploads files preserving relative paths under destPrefix.
 // Example: uploadDirToMinio(..., "processed/uuid/1080p", "/tmp/job/1080p")
 // will upload "/tmp/job/1080p/index.m3u8" -> "processed/uuid/1080p/index.m3u8" in bucket
-func uploadDirToMinio(ctx context.Context, client *minio.Client, bucket, destPrefix, dir string) error {
+func (rc *redisConsumer) uploadDirToMinio(ctx context.Context, client *minio.Client, bucket, destPrefix, dir string, videoID uuid.UUID) error {
 	// Walk local directory
 	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -207,6 +211,22 @@ func uploadDirToMinio(ctx context.Context, client *minio.Client, bucket, destPre
 		if err != nil {
 			return fmt.Errorf("FPutObject %s -> %s: %w", path, objectName, err)
 		}
+		// _, err = rc.db.UpdateOriginalVideoStatus(ctx, db.UpdateOriginalVideoStatusParams{
+		// 	Status: "processed",
+		// 	ID:     videoID,
+		// })
+		// if err != nil {
+		// 	return fmt.Errorf("UpdateVideoProcessingStatus %s -> %s: %w", path, objectName, err)
+		// }
+		// _, err = rc.db.SaveProcessedVideoMetadata(ctx, db.SaveProcessedVideoMetadataParams{
+		// 	VideoID:     videoID,
+		// 	ContentType: contentType,
+		// 	Bucket:      bucket,
+		// 	Key:         objectName,
+		// })
+		// if err != nil {
+		// 	return fmt.Errorf("SaveProcessedVideoMetadata %s -> %s: %w", path, objectName, err)
+		// }
 		log.Printf("uploaded %s -> s3://%s/%s", path, bucket, objectName)
 		return nil
 	})

@@ -61,7 +61,7 @@ func (vh videoHandler) Upload(c *gin.Context) {
 
 	c.Request.ParseMultipartForm(100 << 20) // 100 MB
 
-	urls, err := vh.services.Upload(ctx, uid, req)
+	err := vh.services.Upload(ctx, uid, req)
 	if err != nil {
 		vh.logger.Error("failed to upload video", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload video"})
@@ -71,7 +71,6 @@ func (vh videoHandler) Upload(c *gin.Context) {
 		"Ok": true,
 		"data": map[string]interface{}{
 			"message": "Video uploaded successfully",
-			"urls":    urls,
 		},
 		"error": nil,
 	})

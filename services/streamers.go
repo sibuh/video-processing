@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+	"video-processing/database/db"
 	"video-processing/models"
 
-	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 	"github.com/redis/go-redis/v9"
 )
@@ -64,9 +64,10 @@ type redisConsumer struct {
 	logger       *slog.Logger
 	rc           *redis.Client
 	mc           *minio.Client
+	db           *db.Queries
 }
 
-func NewRedisConsumer(streamName, groupName, consumerName string, logger *slog.Logger, rc *redis.Client, mc *minio.Client) Consumer {
+func NewRedisConsumer(streamName, groupName, consumerName string, logger *slog.Logger, rc *redis.Client, mc *minio.Client, db *db.Queries) Consumer {
 	return &redisConsumer{
 		streamName:   streamName,
 		groupName:    groupName,
@@ -74,6 +75,7 @@ func NewRedisConsumer(streamName, groupName, consumerName string, logger *slog.L
 		logger:       logger,
 		rc:           rc,
 		mc:           mc,
+		db:           db,
 	}
 }
 func (rc *redisConsumer) Consume(ctx context.Context) error {
@@ -117,7 +119,7 @@ func (rc *redisConsumer) Consume(ctx context.Context) error {
 		// Process the batch of entries
 		for _, stream := range entries {
 			for _, message := range stream.Messages {
-				rc.ProcessVideo(context.Background(), message.Values["bucket"].(string), message.Values["key"].(string), "processed/"+uuid.New().String())
+				rc.ProcessVideo(context.Background(), message.Values)
 
 				// 3. Acknowledge the message
 				// This removes it from the "Pending Entries List" (PEL)
