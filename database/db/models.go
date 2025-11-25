@@ -41,11 +41,16 @@ type Video struct {
 }
 
 type VideoVariant struct {
-	ID          uuid.UUID          `json:"id"`
-	VideoID     uuid.UUID          `json:"video_id"`
-	VariantName string             `json:"variant_name"`
-	Bucket      string             `json:"bucket"`
-	Key         string             `json:"key"`
-	ContentType string             `json:"content_type"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ID             uuid.UUID          `json:"id"`
+	VideoID        uuid.UUID          `json:"video_id"`
+	VariantName    string             `json:"variant_name"`
+	Bucket         string             `json:"bucket"`
+	Key            string             `json:"key"`
+	ContentType    string             `json:"content_type"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	HlsPlaylistKey pgtype.Text        `json:"hls_playlist_key"`
+	ThumbnailKey   pgtype.Text        `json:"thumbnail_key"`
+	Width          pgtype.Int4        `json:"width"`
+	Height         pgtype.Int4        `json:"height"`
+	BitrateKbps    pgtype.Int4        `json:"bitrate_kbps"`
 }

@@ -1,4 +1,4 @@
-package video	
+package video
 
 import (
 	"context"
@@ -9,9 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"video-processing/database/db"
 	"video-processing/models"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/minio/minio-go/v7"
 )
 
@@ -31,11 +36,41 @@ Example:
   go run main.go my-bucket uploads/input.mp4 processed/input-uuid/
 */
 
+// Variant represents a video variant configuration
 type Variant struct {
 	Name    string // logical name like "1080p"
 	Width   int
 	Height  int
 	Bitrate string // e.g., "4000k"
+}
+
+// ProcessingTask represents a single video processing task
+type ProcessingTask struct {
+	Variant    Variant
+	WorkDir    string
+	SourcePath string
+	DestPrefix string
+	Bucket     string
+	VideoID    string
+}
+
+// UploadTask represents a file to be uploaded to MinIO
+type UploadTask struct {
+	SourcePath  string
+	ObjectKey   string
+	ContentType string
+	Bucket      string
+}
+
+// ProcessingResult represents the result of processing a single variant
+type ProcessingResult struct {
+	Variant  Variant
+	VideoID  string
+	WorkDir  string
+	Success  bool
+	Error    error
+	Files    []UploadTask
+	Metadata db.SaveProcessedVideoMetadataParams
 }
 
 var variants = []Variant{
@@ -47,128 +82,327 @@ var variants = []Variant{
 	{Name: "144p", Width: 256, Height: 144, Bitrate: "100k"},
 }
 
+// processVariant processes a single video variant
+func (rc *redisConsumer) processVariant(ctx context.Context, task ProcessingTask, resultChan chan<- ProcessingResult, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	result := ProcessingResult{
+		Variant: task.Variant,
+		VideoID: task.VideoID,
+		WorkDir: task.WorkDir,
+		Success: true,
+	}
+
+	// Create variant-specific directory
+	varDir := filepath.Join(task.WorkDir, task.Variant.Name)
+	if err := os.MkdirAll(varDir, 0o755); err != nil {
+		result.Success = false
+		result.Error = fmt.Errorf("failed to create variant directory: %w", err)
+		resultChan <- result
+		return
+	}
+
+	// 1. Transcode to MP4
+	mp4Path := filepath.Join(varDir, fmt.Sprintf("%s.mp4", task.Variant.Name))
+	if err := transcodeToMP4(ctx, task.SourcePath, mp4Path, task.Variant); err != nil {
+		result.Success = false
+		result.Error = fmt.Errorf("transcode failed: %w", err)
+		resultChan <- result
+		return
+	}
+
+	// 2. Generate HLS in the variant directory (same level as thumbnail)
+	hlsDir := varDir // Store HLS files directly in the variant directory
+	if err := os.MkdirAll(hlsDir, 0o755); err != nil {
+		result.Success = false
+		result.Error = fmt.Errorf("failed to create variant directory for HLS: %w", err)
+		resultChan <- result
+		return
+	}
+
+	if err := generateHLS(ctx, mp4Path, hlsDir); err != nil {
+		result.Success = false
+		result.Error = fmt.Errorf("HLS generation failed: %w", err)
+		resultChan <- result
+		return
+	}
+
+	// 3. Generate thumbnail
+	thumbPath := filepath.Join(varDir, fmt.Sprintf("%s-thumb.jpg", task.Variant.Name))
+	if err := generateThumbnail(ctx, mp4Path, thumbPath, 5); err != nil {
+		rc.logger.Warn("thumbnail generation failed", "error", err, "variant", task.Variant.Name)
+		// Don't fail the whole process if thumbnail fails
+	}
+
+	// Prepare upload tasks
+	destPrefix := filepath.Join(task.DestPrefix, task.Variant.Name)
+	destPrefix = filepath.ToSlash(destPrefix) // Normalize to forward slashes
+
+	// Add MP4 file to upload tasks
+	result.Files = append(result.Files, UploadTask{
+		SourcePath:  mp4Path,
+		ObjectKey:   filepath.ToSlash(filepath.Join(destPrefix, fmt.Sprintf("%s.mp4", task.Variant.Name))),
+		ContentType: "video/mp4",
+		Bucket:      task.Bucket,
+	})
+
+	// Add thumbnail to upload tasks
+	if _, err := os.Stat(thumbPath); err == nil {
+		result.Files = append(result.Files, UploadTask{
+			SourcePath:  thumbPath,
+			ObjectKey:   filepath.ToSlash(filepath.Join(destPrefix, fmt.Sprintf("%s-thumb.jpg", task.Variant.Name))),
+			ContentType: "image/jpeg",
+			Bucket:      task.Bucket,
+		})
+	}
+
+	// Add HLS files to upload tasks (now at the same level as other files)
+	hlsFiles, err := filepath.Glob(filepath.Join(hlsDir, "*"))
+	if err != nil {
+		rc.logger.Warn("failed to list HLS files", "error", err, "variant", task.Variant.Name)
+	} else {
+		for _, hlsFile := range hlsFiles {
+			// Skip the MP4 and thumbnail files that are already added
+			if strings.HasSuffix(hlsFile, ".mp4") || strings.HasSuffix(hlsFile, "-thumb.jpg") {
+				continue
+			}
+			ext := filepath.Ext(hlsFile)
+			contentType := mimeTypeByExt(ext)
+			// Get just the filename to maintain flat structure
+			_, fileName := filepath.Split(hlsFile)
+			result.Files = append(result.Files, UploadTask{
+				SourcePath:  hlsFile,
+				ObjectKey:   filepath.ToSlash(filepath.Join(destPrefix, fileName)),
+				ContentType: contentType,
+				Bucket:      task.Bucket,
+			})
+		}
+	}
+
+	// Prepare metadata for database
+	bitrateStr := strings.TrimSuffix(task.Variant.Bitrate, "k")
+	bitrate, _ := strconv.ParseInt(bitrateStr, 10, 32)
+
+	videoUUID, err := uuid.Parse(task.VideoID)
+	if err != nil {
+		result.Success = false
+		result.Error = fmt.Errorf("invalid video ID: %w", err)
+		resultChan <- result
+		return
+	}
+
+	// Prepare metadata with updated HLS path (now at the same level)
+	hlsPlaylistPath := filepath.ToSlash(filepath.Join(destPrefix, "index.m3u8"))
+	thumbnailPath := filepath.ToSlash(filepath.Join(destPrefix, fmt.Sprintf("%s-thumb.jpg", task.Variant.Name)))
+
+	result.Metadata = db.SaveProcessedVideoMetadataParams{
+		VideoID:     videoUUID,
+		VariantName: task.Variant.Name,
+		Bucket:      task.Bucket,
+		Key:         filepath.ToSlash(filepath.Join(destPrefix, fmt.Sprintf("%s.mp4", task.Variant.Name))),
+		ContentType: "video/mp4",
+		HlsPlaylistKey: pgtype.Text{
+			String: hlsPlaylistPath,
+			Valid:  true,
+		},
+		ThumbnailKey: pgtype.Text{
+			String: thumbnailPath,
+			Valid:  true,
+		},
+		Width: pgtype.Int4{
+			Int32: int32(task.Variant.Width),
+			Valid: true,
+		},
+		Height: pgtype.Int4{
+			Int32: int32(task.Variant.Height),
+			Valid: true,
+		},
+		BitrateKbps: pgtype.Int4{
+			Int32: int32(bitrate),
+			Valid: true,
+		},
+	}
+
+	rc.logger.Info("prepared variant metadata", 
+		"variant", task.Variant.Name,
+		"hls_playlist", hlsPlaylistPath,
+		"thumbnail", thumbnailPath,
+	)
+
+	resultChan <- result
+}
+
+// uploadWorker processes upload tasks from the upload channel
+func (rc *redisConsumer) uploadWorker(ctx context.Context, uploadCh <-chan UploadTask, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for task := range uploadCh {
+		file, err := os.Open(task.SourcePath)
+		if err != nil {
+			rc.logger.Error("failed to open file for upload", "path", task.SourcePath, "error", err)
+			continue
+		}
+
+		_, err = rc.mc.PutObject(ctx, task.Bucket, task.ObjectKey, file, -1, minio.PutObjectOptions{
+			ContentType: task.ContentType,
+		})
+		file.Close()
+
+		if err != nil {
+			rc.logger.Error("upload failed", "object", task.ObjectKey, "error", err)
+		} else {
+			rc.logger.Info("upload successful", "object", task.ObjectKey)
+		}
+	}
+}
+
+// saveVariantMetadata saves variant metadata to the database
+func (rc *redisConsumer) saveVariantMetadata(ctx context.Context, result ProcessingResult) {
+	if !result.Success || result.Error != nil {
+		rc.logger.Error("skipping metadata save for failed variant",
+			"variant", result.Variant.Name,
+			"error", result.Error)
+		return
+	}
+
+	_, err := rc.db.SaveProcessedVideoMetadata(ctx, result.Metadata)
+	if err != nil {
+		rc.logger.Error("failed to save variant metadata",
+			"variant", result.Variant.Name,
+			"error", err)
+	} else {
+		rc.logger.Info("saved variant metadata",
+			"variant", result.Variant.Name,
+			"videoID", result.VideoID)
+	}
+}
+
 func (rc *redisConsumer) ProcessVideo(ctx context.Context, values map[string]interface{}) error {
+	// Extract input parameters
 	bucket := values["bucket"].(string)
 	sourceObj := values["key"].(string)
 	videoID := values["video_id"].(string)
 	resultsPrefix := fmt.Sprintf("processed/%s", uuid.New().String())
-	// Create a temp working dir for the job; cleaned up on exit.
+
+	// Create a temp working dir for the job; cleaned up on exit
 	workDir, err := os.MkdirTemp("", "video-job-*")
 	if err != nil {
 		return models.Error{
 			Code:        http.StatusInternalServerError,
 			Message:     "internal server error",
-			Description: "failed to create working directory for video processing",
-			Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
+			Description: "failed to create working directory",
+			Params:      fmt.Sprintf("bucket: %v, sourceObj: %v", bucket, sourceObj),
 			Err:         fmt.Errorf("failed to create temp dir: %w", err),
 		}
 	}
-	defer os.RemoveAll(workDir) // cleanup everything at the end
-	rc.logger.Info("workdir", "workDir", workDir)
+	defer os.RemoveAll(workDir)
 
-	// Step 1: download source video from MinIO to local file
+	rc.logger.Info("starting video processing",
+		"videoID", videoID,
+		"source", sourceObj,
+		"workDir", workDir)
+
+	// Step 1: Download source video from MinIO
 	localSourcePath := filepath.Join(workDir, "source"+filepath.Ext(sourceObj))
-	rc.logger.Info("downloading s3://%s/%s -> %s", "bucket", bucket, "sourceObj", sourceObj, "localSourcePath", localSourcePath)
+	rc.logger.Info("downloading source video",
+		"source", fmt.Sprintf("s3://%s/%s", bucket, sourceObj),
+		"destination", localSourcePath)
+
 	if err := downloadFromMinio(ctx, rc.mc, bucket, sourceObj, localSourcePath); err != nil {
 		return models.Error{
 			Code:        http.StatusInternalServerError,
-			Message:     "internal server error",
-			Description: "failed to download source video from MinIO",
-			Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
-			Err:         fmt.Errorf("failed to download source video from MinIO: %w", err),
+			Message:     "download failed",
+			Description: "failed to download source video",
+			Params:      fmt.Sprintf("bucket: %v, source: %v", bucket, sourceObj),
+			Err:         err,
 		}
 	}
-	rc.logger.Info("download complete")
 
-	// For each variant: transcode -> generate HLS -> thumbnail -> upload
-	for _, v := range variants {
-		rc.logger.Info("processing variant", "name", v.Name, "width", v.Width, "height", v.Height, "bitrate", v.Bitrate)
+	rc.logger.Info("source download complete", "path", localSourcePath)
 
-		// create variant output dir inside workDir
-		varDir := filepath.Join(workDir, v.Name)
-		if err := os.MkdirAll(varDir, 0o755); err != nil {
-			return models.Error{
-				Code:        http.StatusInternalServerError,
-				Message:     "internal server error",
-				Description: "failed to create variant output directory",
-				Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
-				Err:         fmt.Errorf("failed to create variant output directory: %w", err),
-			}
-		}
+	// Create channels for the pipeline
+	resultCh := make(chan ProcessingResult, len(variants))
+	uploadCh := make(chan UploadTask, 100) // Buffer some upload tasks
 
-		// 2.a Transcode to MP4 (local)
-		mp4Path := filepath.Join(varDir, fmt.Sprintf("%s.mp4", v.Name))
-		if err := transcodeToMP4(ctx, localSourcePath, mp4Path, v); err != nil {
-			return models.Error{
-				Code:        http.StatusInternalServerError,
-				Message:     "internal server error",
-				Description: "failed to transcode video to MP4",
-				Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
-				Err:         fmt.Errorf("failed to transcode video to MP4: %w", err),
-			}
-		}
-		rc.logger.Info("transcoded mp4", "mp4Path", mp4Path)
-
-		// 2.b Generate HLS (creates index.m3u8 and segment files in varDir/hls/)
-		hlsDir := filepath.Join(varDir, "hls")
-		if err := os.MkdirAll(hlsDir, 0o755); err != nil {
-			return models.Error{
-				Code:        http.StatusInternalServerError,
-				Message:     "internal server error",
-				Description: "failed to create HLS directory",
-				Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
-				Err:         fmt.Errorf("failed to create HLS directory: %w", err),
-			}
-		}
-		if err := generateHLS(ctx, mp4Path, hlsDir); err != nil {
-			return models.Error{
-				Code:        http.StatusInternalServerError,
-				Message:     "internal server error",
-				Description: "failed to generate HLS",
-				Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
-				Err:         fmt.Errorf("failed to generate HLS: %w", err),
-			}
-		}
-		rc.logger.Info("hls generated at", "hlsDir", hlsDir)
-
-		// 2.c Generate thumbnail (we capture at 5 seconds)
-		thumbPath := filepath.Join(varDir, fmt.Sprintf("%s-thumb.jpg", v.Name))
-		if err := generateThumbnail(ctx, mp4Path, thumbPath, 5); err != nil {
-			return models.Error{
-				Code:        http.StatusInternalServerError,
-				Message:     "internal server error",
-				Description: "failed to generate thumbnail",
-				Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
-				Err:         fmt.Errorf("failed to generate thumbnail: %w", err),
-			}
-		}
-		rc.logger.Info("thumbnail generated", "thumbPath", thumbPath)
-
-		// 2.d Upload mp4 + hls files + thumbnail to MinIO under resultsPrefix/<variant>/
-		destPrefix := filepath.Join(resultsPrefix, v.Name) // e.g., processed/uuid/1080p
-		// Normalize to use forward slashes (MinIO object keys use /)
-		destPrefix = filepath.ToSlash(destPrefix)
-		rc.logger.Info("uploading files to s3://", "bucket", bucket, "destPrefix", destPrefix)
-		if err := rc.uploadDirToMinio(ctx, rc.mc, bucket, destPrefix, varDir, uuid.MustParse(videoID)); err != nil {
-			return models.Error{
-				Code:        http.StatusInternalServerError,
-				Message:     "internal server error",
-				Description: "failed to upload files to MinIO",
-				Params:      fmt.Sprintf("bucket: %v, sourceObj: %v, resultsPrefix: %v", bucket, sourceObj, resultsPrefix),
-				Err:         fmt.Errorf("failed to upload files to MinIO: %w", err),
-			}
-		}
-		rc.logger.Info("upload complete for variant", "name", v.Name)
+	// Start the upload workers
+	var uploadWg sync.WaitGroup
+	numUploadWorkers := 3 // Number of concurrent uploads
+	for i := 0; i < numUploadWorkers; i++ {
+		uploadWg.Add(1)
+		go rc.uploadWorker(ctx, uploadCh, &uploadWg)
 	}
 
-	log.Println("All variants processed and uploaded successfully")
+	// Start a goroutine to process results and queue uploads
+	var resultWg sync.WaitGroup
+	resultWg.Add(1)
+	go func() {
+		defer resultWg.Done()
+		for result := range resultCh {
+			if result.Success && len(result.Files) > 0 {
+				// Queue uploads for this variant
+				for _, file := range result.Files {
+					select {
+					case <-ctx.Done():
+						rc.logger.Warn("context done, stopping upload queue", "variant", result.Variant.Name)
+						return
+					case uploadCh <- file:
+						// File queued for upload
+					}
+				}
+				// Save metadata to database
+				rc.saveVariantMetadata(ctx, result)
+			} else if !result.Success {
+				rc.logger.Error("variant processing failed",
+					"variant", result.Variant.Name,
+					"error", result.Error)
+			}
+		}
+	}()
+
+	// Process each variant in parallel
+	var processWg sync.WaitGroup
+	for _, variant := range variants {
+		processWg.Add(1)
+		task := ProcessingTask{
+			Variant:    variant,
+			WorkDir:    workDir,
+			SourcePath: localSourcePath,
+			DestPrefix: resultsPrefix,
+			Bucket:     bucket,
+			VideoID:    videoID,
+		}
+		go func(t ProcessingTask) {
+			rc.processVariant(ctx, t, resultCh, &processWg)
+		}(task)
+	}
+
+	// Wait for all variants to be processed
+	processWg.Wait()
+	close(resultCh) // This will signal the result processor to exit
+
+	// Wait for all processing to complete
+	resultWg.Wait()
+
+	rc.logger.Debug("all variants processed, waiting for uploads to complete", "videoID", videoID)
+
+	// Close upload channel and wait for uploads to complete
+	close(uploadCh)
+	uploadWg.Wait()
+
+	rc.logger.Info("all processing and uploads completed", "videoID", videoID)
+
+	// Clean up working directory
+	if err := os.RemoveAll(workDir); err != nil {
+		rc.logger.Error("failed to clean up working directory", "error", err, "workDir", workDir)
+	} else {
+		rc.logger.Debug("cleaned up working directory", "workDir", workDir)
+	}
+
+	rc.logger.Info("video processing completed", "videoID", videoID)
 	return nil
 }
 
-/* ----------------------------
-   MinIO: download and upload helpers
-   ---------------------------- */
-
+// ...
 // downloadFromMinio downloads an object to a local file path using FGetObject (server-side streaming to disk)
 func downloadFromMinio(ctx context.Context, client *minio.Client, bucket, object, destPath string) error {
 	// FGetObject will stream object directly to the destination path on disk.

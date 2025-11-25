@@ -41,5 +41,21 @@ INSERT INTO video_variants (
     variant_name,
     bucket,
     key,
-    content_type
-) VALUES ($1, $2, $3, $4, $5) RETURNING *;
+    content_type,
+    hls_playlist_key,
+    thumbnail_key,
+    width,
+    height,
+    bitrate_kbps
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+ON CONFLICT (video_id, variant_name) 
+DO UPDATE SET 
+    bucket = EXCLUDED.bucket,
+    key = EXCLUDED.key,
+    content_type = EXCLUDED.content_type,
+    hls_playlist_key = EXCLUDED.hls_playlist_key,
+    thumbnail_key = EXCLUDED.thumbnail_key,
+    width = EXCLUDED.width,
+    height = EXCLUDED.height,
+    bitrate_kbps = EXCLUDED.bitrate_kbps
+RETURNING *;

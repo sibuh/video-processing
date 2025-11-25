@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createVideo = `-- name: CreateVideo :one
@@ -148,16 +149,37 @@ INSERT INTO video_variants (
     variant_name,
     bucket,
     key,
-    content_type
-) VALUES ($1, $2, $3, $4, $5) RETURNING id, video_id, variant_name, bucket, key, content_type, created_at
+    content_type,
+    hls_playlist_key,
+    thumbnail_key,
+    width,
+    height,
+    bitrate_kbps
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+ON CONFLICT (video_id, variant_name) 
+DO UPDATE SET 
+    bucket = EXCLUDED.bucket,
+    key = EXCLUDED.key,
+    content_type = EXCLUDED.content_type,
+    hls_playlist_key = EXCLUDED.hls_playlist_key,
+    thumbnail_key = EXCLUDED.thumbnail_key,
+    width = EXCLUDED.width,
+    height = EXCLUDED.height,
+    bitrate_kbps = EXCLUDED.bitrate_kbps
+RETURNING id, video_id, variant_name, bucket, key, content_type, created_at, hls_playlist_key, thumbnail_key, width, height, bitrate_kbps
 `
 
 type SaveProcessedVideoMetadataParams struct {
-	VideoID     uuid.UUID `json:"video_id"`
-	VariantName string    `json:"variant_name"`
-	Bucket      string    `json:"bucket"`
-	Key         string    `json:"key"`
-	ContentType string    `json:"content_type"`
+	VideoID        uuid.UUID   `json:"video_id"`
+	VariantName    string      `json:"variant_name"`
+	Bucket         string      `json:"bucket"`
+	Key            string      `json:"key"`
+	ContentType    string      `json:"content_type"`
+	HlsPlaylistKey pgtype.Text `json:"hls_playlist_key"`
+	ThumbnailKey   pgtype.Text `json:"thumbnail_key"`
+	Width          pgtype.Int4 `json:"width"`
+	Height         pgtype.Int4 `json:"height"`
+	BitrateKbps    pgtype.Int4 `json:"bitrate_kbps"`
 }
 
 func (q *Queries) SaveProcessedVideoMetadata(ctx context.Context, arg SaveProcessedVideoMetadataParams) (VideoVariant, error) {
@@ -167,6 +189,11 @@ func (q *Queries) SaveProcessedVideoMetadata(ctx context.Context, arg SaveProces
 		arg.Bucket,
 		arg.Key,
 		arg.ContentType,
+		arg.HlsPlaylistKey,
+		arg.ThumbnailKey,
+		arg.Width,
+		arg.Height,
+		arg.BitrateKbps,
 	)
 	var i VideoVariant
 	err := row.Scan(
@@ -177,6 +204,11 @@ func (q *Queries) SaveProcessedVideoMetadata(ctx context.Context, arg SaveProces
 		&i.Key,
 		&i.ContentType,
 		&i.CreatedAt,
+		&i.HlsPlaylistKey,
+		&i.ThumbnailKey,
+		&i.Width,
+		&i.Height,
+		&i.BitrateKbps,
 	)
 	return i, err
 }
