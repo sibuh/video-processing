@@ -11,37 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type OriginalVideo struct {
-	ID            uuid.UUID `json:"id"`
-	UserID        uuid.UUID `json:"user_id"`
-	Status        string    `json:"status"`
-	Filename      string    `json:"filename"`
-	Title         string    `json:"title"`
-	Description   string    `json:"description"`
-	Bucket        string    `json:"bucket"`
-	Key           string    `json:"key"`
-	FileSizeBytes int64     `json:"file_size_bytes"`
-	ContentType   string    `json:"content_type"`
-	Duration      int32     `json:"duration"`
-	Width         int32     `json:"width"`
-	Height        int32     `json:"height"`
-	Metadata      []byte    `json:"metadata"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-}
-
-type ProcessedVideo struct {
-	ID            uuid.UUID `json:"id"`
-	VideoID       uuid.UUID `json:"video_id"`
-	ContentType   string    `json:"content_type"`
-	Bucket        string    `json:"bucket"`
-	Key           string    `json:"key"`
-	Width         int32     `json:"width"`
-	Height        int32     `json:"height"`
-	FileSizeBytes int64     `json:"file_size_bytes"`
-	CreatedAt     time.Time `json:"created_at"`
-}
-
 type User struct {
 	ID                uuid.UUID          `json:"id"`
 	FirstName         string             `json:"first_name"`
@@ -55,4 +24,28 @@ type User struct {
 	CreatedAt         time.Time          `json:"created_at"`
 	UpdatedAt         time.Time          `json:"updated_at"`
 	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
+}
+
+type Video struct {
+	ID            uuid.UUID          `json:"id"`
+	UserID        uuid.UUID          `json:"user_id"`
+	Title         string             `json:"title"`
+	Description   string             `json:"description"`
+	Bucket        string             `json:"bucket"`
+	Key           string             `json:"key"`
+	Status        string             `json:"status"`
+	FileSizeBytes int64              `json:"file_size_bytes"`
+	ContentType   string             `json:"content_type"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type VideoVariant struct {
+	ID          uuid.UUID          `json:"id"`
+	VideoID     uuid.UUID          `json:"video_id"`
+	VariantName string             `json:"variant_name"`
+	Bucket      string             `json:"bucket"`
+	Key         string             `json:"key"`
+	ContentType string             `json:"content_type"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
