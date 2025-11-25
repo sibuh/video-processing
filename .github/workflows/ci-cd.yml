@@ -13,16 +13,16 @@ env:
 jobs:
       
   test:
-    name: Run Tests
+    name: Run Go Tests
     runs-on: ubuntu-latest
+
     services:
-      # PostgreSQL service
       postgres:
-        image: postgres:15-alpine
+        image: postgres:15
         env:
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpassword
-          POSTGRES_DB: testdb
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: yeha
         ports:
           - 5432:5432
         options: >-
@@ -30,10 +30,9 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      
-      # Redis service
+
       redis:
-        image: redis:alpine
+        image: redis:8
         ports:
           - 6379:6379
         options: >-
@@ -41,24 +40,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      
-      # MinIO service
+
       minio:
-        image: minio/minio:latest
+        image: minio/minio:edge-cicd
+        ports:
+          - 9000:9000
+          - 9001:9001
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
-        ports:
-          - 9000:9000 # API port
-          - 9001:9001 # Console port
-        options: >-
-          --health-cmd "/usr/bin/curl -f http://localhost:9000/minio/health/live || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-          --entrypoint /bin/sh
-          -c "mkdir -p /data && /usr/bin/docker-entrypoint.sh server /data --console-address :9001"
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
@@ -70,19 +60,6 @@ jobs:
         cache: true
 
     - name: Run tests
-      env:
-        DB_HOST: localhost
-        DB_PORT: 5432
-        DB_USER: testuser
-        DB_PASSWORD: testpassword
-        DB_NAME: testdb
-        DB_SSLMODE: disable
-        REDIS_ADDR: localhost:6379
-        MINIO_ENDPOINT: localhost:9000
-        MINIO_ACCESS_KEY: minioadmin
-        MINIO_SECRET_KEY: minioadmin
-        MINIO_USE_SSL: "false"
-        ENV: test
       run: |
         go test -v ./...
 
