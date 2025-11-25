@@ -12,21 +12,19 @@ import (
 )
 
 const createVideo = `-- name: CreateVideo :one
-INSERT INTO original_videos (
+INSERT INTO videos (
     user_id,     
-    filename,
     title,
     description,
     bucket,
     key,
     file_size_bytes,
     content_type
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, user_id, status, filename, title, description, bucket, key, file_size_bytes, content_type, duration, width, height, metadata, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, user_id, title, description, bucket, key, status, file_size_bytes, content_type, created_at, updated_at
 `
 
 type CreateVideoParams struct {
 	UserID        uuid.UUID `json:"user_id"`
-	Filename      string    `json:"filename"`
 	Title         string    `json:"title"`
 	Description   string    `json:"description"`
 	Bucket        string    `json:"bucket"`
@@ -35,10 +33,9 @@ type CreateVideoParams struct {
 	ContentType   string    `json:"content_type"`
 }
 
-func (q *Queries) CreateVideo(ctx context.Context, arg CreateVideoParams) (OriginalVideo, error) {
+func (q *Queries) CreateVideo(ctx context.Context, arg CreateVideoParams) (Video, error) {
 	row := q.db.QueryRow(ctx, createVideo,
 		arg.UserID,
-		arg.Filename,
 		arg.Title,
 		arg.Description,
 		arg.Bucket,
@@ -46,22 +43,17 @@ func (q *Queries) CreateVideo(ctx context.Context, arg CreateVideoParams) (Origi
 		arg.FileSizeBytes,
 		arg.ContentType,
 	)
-	var i OriginalVideo
+	var i Video
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.Status,
-		&i.Filename,
 		&i.Title,
 		&i.Description,
 		&i.Bucket,
 		&i.Key,
+		&i.Status,
 		&i.FileSizeBytes,
 		&i.ContentType,
-		&i.Duration,
-		&i.Width,
-		&i.Height,
-		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -69,27 +61,22 @@ func (q *Queries) CreateVideo(ctx context.Context, arg CreateVideoParams) (Origi
 }
 
 const deleteVideo = `-- name: DeleteVideo :one
-DELETE FROM original_videos WHERE id = $1 RETURNING id, user_id, status, filename, title, description, bucket, key, file_size_bytes, content_type, duration, width, height, metadata, created_at, updated_at
+DELETE FROM videos WHERE id = $1 RETURNING id, user_id, title, description, bucket, key, status, file_size_bytes, content_type, created_at, updated_at
 `
 
-func (q *Queries) DeleteVideo(ctx context.Context, id uuid.UUID) (OriginalVideo, error) {
+func (q *Queries) DeleteVideo(ctx context.Context, id uuid.UUID) (Video, error) {
 	row := q.db.QueryRow(ctx, deleteVideo, id)
-	var i OriginalVideo
+	var i Video
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.Status,
-		&i.Filename,
 		&i.Title,
 		&i.Description,
 		&i.Bucket,
 		&i.Key,
+		&i.Status,
 		&i.FileSizeBytes,
 		&i.ContentType,
-		&i.Duration,
-		&i.Width,
-		&i.Height,
-		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -97,27 +84,22 @@ func (q *Queries) DeleteVideo(ctx context.Context, id uuid.UUID) (OriginalVideo,
 }
 
 const getVideo = `-- name: GetVideo :one
-SELECT id, user_id, status, filename, title, description, bucket, key, file_size_bytes, content_type, duration, width, height, metadata, created_at, updated_at FROM original_videos WHERE id = $1
+SELECT id, user_id, title, description, bucket, key, status, file_size_bytes, content_type, created_at, updated_at FROM videos WHERE id = $1
 `
 
-func (q *Queries) GetVideo(ctx context.Context, id uuid.UUID) (OriginalVideo, error) {
+func (q *Queries) GetVideo(ctx context.Context, id uuid.UUID) (Video, error) {
 	row := q.db.QueryRow(ctx, getVideo, id)
-	var i OriginalVideo
+	var i Video
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.Status,
-		&i.Filename,
 		&i.Title,
 		&i.Description,
 		&i.Bucket,
 		&i.Key,
+		&i.Status,
 		&i.FileSizeBytes,
 		&i.ContentType,
-		&i.Duration,
-		&i.Width,
-		&i.Height,
-		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -125,33 +107,28 @@ func (q *Queries) GetVideo(ctx context.Context, id uuid.UUID) (OriginalVideo, er
 }
 
 const listVideos = `-- name: ListVideos :many
-SELECT id, user_id, status, filename, title, description, bucket, key, file_size_bytes, content_type, duration, width, height, metadata, created_at, updated_at FROM original_videos ORDER BY created_at DESC
+SELECT id, user_id, title, description, bucket, key, status, file_size_bytes, content_type, created_at, updated_at FROM videos ORDER BY created_at DESC
 `
 
-func (q *Queries) ListVideos(ctx context.Context) ([]OriginalVideo, error) {
+func (q *Queries) ListVideos(ctx context.Context) ([]Video, error) {
 	rows, err := q.db.Query(ctx, listVideos)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []OriginalVideo
+	var items []Video
 	for rows.Next() {
-		var i OriginalVideo
+		var i Video
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.Status,
-			&i.Filename,
 			&i.Title,
 			&i.Description,
 			&i.Bucket,
 			&i.Key,
+			&i.Status,
 			&i.FileSizeBytes,
 			&i.ContentType,
-			&i.Duration,
-			&i.Width,
-			&i.Height,
-			&i.Metadata,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -166,110 +143,66 @@ func (q *Queries) ListVideos(ctx context.Context) ([]OriginalVideo, error) {
 }
 
 const saveProcessedVideoMetadata = `-- name: SaveProcessedVideoMetadata :one
-INSERT INTO processed_videos (
+INSERT INTO video_variants (
     video_id,
-    content_type,
+    variant_name,
     bucket,
-    key
-) VALUES ($1, $2, $3, $4) RETURNING id, video_id, content_type, bucket, key, width, height, file_size_bytes, created_at
+    key,
+    content_type
+) VALUES ($1, $2, $3, $4, $5) RETURNING id, video_id, variant_name, bucket, key, content_type, created_at
 `
 
 type SaveProcessedVideoMetadataParams struct {
 	VideoID     uuid.UUID `json:"video_id"`
-	ContentType string    `json:"content_type"`
+	VariantName string    `json:"variant_name"`
 	Bucket      string    `json:"bucket"`
 	Key         string    `json:"key"`
+	ContentType string    `json:"content_type"`
 }
 
-func (q *Queries) SaveProcessedVideoMetadata(ctx context.Context, arg SaveProcessedVideoMetadataParams) (ProcessedVideo, error) {
+func (q *Queries) SaveProcessedVideoMetadata(ctx context.Context, arg SaveProcessedVideoMetadataParams) (VideoVariant, error) {
 	row := q.db.QueryRow(ctx, saveProcessedVideoMetadata,
 		arg.VideoID,
-		arg.ContentType,
+		arg.VariantName,
 		arg.Bucket,
 		arg.Key,
+		arg.ContentType,
 	)
-	var i ProcessedVideo
+	var i VideoVariant
 	err := row.Scan(
 		&i.ID,
 		&i.VideoID,
-		&i.ContentType,
+		&i.VariantName,
 		&i.Bucket,
 		&i.Key,
-		&i.Width,
-		&i.Height,
-		&i.FileSizeBytes,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const updateOriginalVideoStatus = `-- name: UpdateOriginalVideoStatus :one
-UPDATE original_videos
-SET 
-    status = $1
-WHERE id = $2 RETURNING id, user_id, status, filename, title, description, bucket, key, file_size_bytes, content_type, duration, width, height, metadata, created_at, updated_at
-`
-
-type UpdateOriginalVideoStatusParams struct {
-	Status string    `json:"status"`
-	ID     uuid.UUID `json:"id"`
-}
-
-func (q *Queries) UpdateOriginalVideoStatus(ctx context.Context, arg UpdateOriginalVideoStatusParams) (OriginalVideo, error) {
-	row := q.db.QueryRow(ctx, updateOriginalVideoStatus, arg.Status, arg.ID)
-	var i OriginalVideo
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.Status,
-		&i.Filename,
-		&i.Title,
-		&i.Description,
-		&i.Bucket,
-		&i.Key,
-		&i.FileSizeBytes,
 		&i.ContentType,
-		&i.Duration,
-		&i.Width,
-		&i.Height,
-		&i.Metadata,
 		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const updateVideo = `-- name: UpdateVideo :one
-UPDATE original_videos
+UPDATE videos
 SET 
     title = COALESCE(NULLIF($1, ''), title),
     description = COALESCE(NULLIF($2, ''), description),
     bucket = COALESCE(NULLIF($3, ''), bucket),
     key = COALESCE(NULLIF($4, ''), key),
     file_size_bytes = COALESCE(NULLIF($5, 0), file_size_bytes),
-    content_type = COALESCE(NULLIF($6, ''), content_type),
-    duration = COALESCE(NULLIF($7, 0), duration),
-    width = COALESCE(NULLIF($8, 0), width),
-    height = COALESCE(NULLIF($9, 0), height),
-    metadata = COALESCE(NULLIF($10, '{}'), metadata)
-WHERE id = $11 RETURNING id, user_id, status, filename, title, description, bucket, key, file_size_bytes, content_type, duration, width, height, metadata, created_at, updated_at
+    content_type = COALESCE(NULLIF($6, ''), content_type)
+WHERE id = $1 RETURNING id, user_id, title, description, bucket, key, status, file_size_bytes, content_type, created_at, updated_at
 `
 
 type UpdateVideoParams struct {
-	Column1  interface{} `json:"column_1"`
-	Column2  interface{} `json:"column_2"`
-	Column3  interface{} `json:"column_3"`
-	Column4  interface{} `json:"column_4"`
-	Column5  interface{} `json:"column_5"`
-	Column6  interface{} `json:"column_6"`
-	Column7  interface{} `json:"column_7"`
-	Column8  interface{} `json:"column_8"`
-	Column9  interface{} `json:"column_9"`
-	Column10 interface{} `json:"column_10"`
-	ID       uuid.UUID   `json:"id"`
+	Column1 interface{} `json:"column_1"`
+	Column2 interface{} `json:"column_2"`
+	Column3 interface{} `json:"column_3"`
+	Column4 interface{} `json:"column_4"`
+	Column5 interface{} `json:"column_5"`
+	Column6 interface{} `json:"column_6"`
 }
 
-func (q *Queries) UpdateVideo(ctx context.Context, arg UpdateVideoParams) (OriginalVideo, error) {
+func (q *Queries) UpdateVideo(ctx context.Context, arg UpdateVideoParams) (Video, error) {
 	row := q.db.QueryRow(ctx, updateVideo,
 		arg.Column1,
 		arg.Column2,
@@ -277,28 +210,49 @@ func (q *Queries) UpdateVideo(ctx context.Context, arg UpdateVideoParams) (Origi
 		arg.Column4,
 		arg.Column5,
 		arg.Column6,
-		arg.Column7,
-		arg.Column8,
-		arg.Column9,
-		arg.Column10,
-		arg.ID,
 	)
-	var i OriginalVideo
+	var i Video
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.Status,
-		&i.Filename,
 		&i.Title,
 		&i.Description,
 		&i.Bucket,
 		&i.Key,
+		&i.Status,
 		&i.FileSizeBytes,
 		&i.ContentType,
-		&i.Duration,
-		&i.Width,
-		&i.Height,
-		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateVideoStatus = `-- name: UpdateVideoStatus :one
+UPDATE videos
+SET 
+    status = $1
+WHERE id = $2 RETURNING id, user_id, title, description, bucket, key, status, file_size_bytes, content_type, created_at, updated_at
+`
+
+type UpdateVideoStatusParams struct {
+	Status string    `json:"status"`
+	ID     uuid.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateVideoStatus(ctx context.Context, arg UpdateVideoStatusParams) (Video, error) {
+	row := q.db.QueryRow(ctx, updateVideoStatus, arg.Status, arg.ID)
+	var i Video
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Title,
+		&i.Description,
+		&i.Bucket,
+		&i.Key,
+		&i.Status,
+		&i.FileSizeBytes,
+		&i.ContentType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

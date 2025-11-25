@@ -211,22 +211,6 @@ func (rc *redisConsumer) uploadDirToMinio(ctx context.Context, client *minio.Cli
 		if err != nil {
 			return fmt.Errorf("FPutObject %s -> %s: %w", path, objectName, err)
 		}
-		// _, err = rc.db.UpdateOriginalVideoStatus(ctx, db.UpdateOriginalVideoStatusParams{
-		// 	Status: "processed",
-		// 	ID:     videoID,
-		// })
-		// if err != nil {
-		// 	return fmt.Errorf("UpdateVideoProcessingStatus %s -> %s: %w", path, objectName, err)
-		// }
-		// _, err = rc.db.SaveProcessedVideoMetadata(ctx, db.SaveProcessedVideoMetadataParams{
-		// 	VideoID:     videoID,
-		// 	ContentType: contentType,
-		// 	Bucket:      bucket,
-		// 	Key:         objectName,
-		// })
-		// if err != nil {
-		// 	return fmt.Errorf("SaveProcessedVideoMetadata %s -> %s: %w", path, objectName, err)
-		// }
 		log.Printf("uploaded %s -> s3://%s/%s", path, bucket, objectName)
 		return nil
 	})

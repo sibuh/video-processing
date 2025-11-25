@@ -115,7 +115,6 @@ func (vp *videoProcessor) Upload(ctx context.Context, userID uuid.UUID, req mode
 		// save video metadata to database
 		createdVideo, err := vp.db.CreateVideo(ctx, db.CreateVideoParams{
 			UserID:        userID,
-			Filename:      fileHeader.Filename,
 			Title:         req.Title,
 			Description:   req.Description,
 			Bucket:        userID.String(),
