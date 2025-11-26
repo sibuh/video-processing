@@ -1,25 +1,25 @@
 database:
-  host: sema_postgres
+  host: localhost
   port: 5432
-  name: sema
-  user: sema
-  password: sema
+  name: postgres
+  user: postgres
+  password: postgres
 testdb:
-  name: sema_test
-  host: sema_postgres
+  name: postgres
+  host: localhost
   port: 5432
-  user: sema
-  password: sema
+  user: postgres
+  password: postgres
 token:
   duration: 1h
   key: qwertyuiopasdfghjklzxcvbnm123456
 minio:
-  endpoint: minio:9000
+  endpoint: localhost:9000
   access_key: minioadmin
   secret_key: minioadmin
   url_expiry: 168h
 redis:
-  host: redis
+  host: localhost
   port: 6379
   password: ""
 timeout:

@@ -1,11 +1,11 @@
 services:
-    postgres:
+    db:
         image: postgres:17-alpine
-        container_name: sema_postgres
+        container_name: postgresdb
         environment:
-            - POSTGRES_USER=sema
-            - POSTGRES_PASSWORD=sema
-            - POSTGRES_DB=sema
+            - POSTGRES_USER=postgres
+            - POSTGRES_PASSWORD=postgres
+            - POSTGRES_DB=postgres
         ports:
             - "5432:5432"
         volumes:
@@ -13,7 +13,7 @@ services:
         networks:
             - video-processing-network
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U sema -d sema || exit 1"]
+            test: ["CMD-SHELL", "pg_isready -U postgres -d postgres || exit 1"]
             interval: 10s
             timeout: 5s
             retries: 5
@@ -51,24 +51,27 @@ services:
             start_period: 30s
         networks:
             - video-processing-network
-    app:
-        build: .  # Tells Compose to build the Dockerfile in the current directory
-        container_name: app        
-        ports:
-            # Maps port 8888 on the host to port 8888 in the container
-            - "8888:8888"
-        depends_on:
-            postgres:
-                condition: service_healthy
-                required: true
-            minio:
-                condition: service_healthy
-                required: true
-            redis:
-                condition: service_healthy
-                required: true
-        networks:
-            - video-processing-network
+            
+    # app:
+    #     build: .  # Tells Compose to build the Dockerfile in the current directory
+    #     container_name: app        
+    #     ports:
+    #         # Maps port 8888 on the host to port 8888 in the container
+    #         - "8888:8888"
+    #     environment:
+    #         - CONFIG_FILE_NAME=config.local
+    #     depends_on:
+    #         postgres:
+    #             condition: service_healthy
+    #             required: true
+    #         minio:
+    #             condition: service_healthy
+    #             required: true
+    #         redis:
+    #             condition: service_healthy
+    #             required: true
+    #     networks:
+    #         - video-processing-network
         
 
 volumes:
@@ -76,3 +79,4 @@ volumes:
     minio_data:
 networks:
     video-processing-network:
+        driver: bridge
