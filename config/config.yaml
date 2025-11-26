@@ -1,15 +1,15 @@
 database:
-  host: sema_postgres
+  host: postgres
   port: 5432
-  name: sema
-  user: sema
-  password: sema
+  name: postgres
+  user: postgres
+  password: postgres
 testdb:
-  name: sema_test
-  host: sema_postgres
+  name: postgres
+  host: postgres
   port: 5432
-  user: sema
-  password: sema
+  user: postgres
+  password: postgres
 token:
   duration: 1h
   key: qwertyuiopasdfghjklzxcvbnm123456
