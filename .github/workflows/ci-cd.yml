@@ -67,7 +67,7 @@ jobs:
   build:
     name: Build and Push
     needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
